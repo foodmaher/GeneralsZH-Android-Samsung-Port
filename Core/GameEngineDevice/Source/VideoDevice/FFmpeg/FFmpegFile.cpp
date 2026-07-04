@@ -51,6 +51,7 @@ Bool FFmpegFile::open(File *file)
 {
 	DEBUG_ASSERTCRASH(m_file == nullptr, ("already open"));
 	DEBUG_ASSERTCRASH(file != nullptr, ("null file pointer"));
+	m_atEof = false;  // GeneralsX @bugfix 14/06/2026 fresh stream is not at EOF
 #if LOGGING_LEVEL != LOGLEVEL_NONE
 	av_log_set_level(AV_LOG_INFO);
 #endif
@@ -207,8 +208,13 @@ Bool FFmpegFile::decodePacket()
 	DEBUG_ASSERTCRASH(m_packet != nullptr, ("null packet pointer"));
 
 	int result = av_read_frame(m_fmtCtx, m_packet);
-	if (result == AVERROR_EOF)
+	if (result == AVERROR_EOF) {
+		// GeneralsX @bugfix 14/06/2026 Record TRUE end-of-file (distinct from the
+		// decode-error returns below). Consumers use isAtEof() to know a one-shot
+		// stream is genuinely finished vs a transient/underrun condition.
+		m_atEof = true;
 		return false;
+	}
 
 	const int stream_idx = m_packet->stream_index;
 	DEBUG_ASSERTCRASH(m_streams.size() > stream_idx, ("stream index out of bounds"));

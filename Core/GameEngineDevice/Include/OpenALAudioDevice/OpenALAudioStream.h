@@ -34,8 +34,14 @@ public:
     OpenALAudioStream();
     ~OpenALAudioStream();
 
-    void setRequireDataCallback(std::function<void()> callback) { m_requireDataCallback = callback; }
+    // GeneralsX @bugfix 14/06/2026 The data callback now returns FALSE when the source
+    // stream has reached true end-of-file (no more data will ever come), so update()
+    // can let a finished one-shot speech reach a stable AL_STOPPED instead of endlessly
+    // restarting its drained source. Returns TRUE on a normal refill or transient error.
+    void setRequireDataCallback(std::function<bool()> callback) { m_requireDataCallback = callback; }
     ALuint getSource() const { return m_source; }
+    // GeneralsX @bugfix 14/06/2026 True once the source stream signalled real EOF.
+    bool isAtEnd() const { return m_endOfData; }
 
     bool bufferData(uint8_t *data, size_t data_size, ALenum format, int samplerate);
     bool isPlaying();
@@ -49,7 +55,8 @@ public:
     void setVolume(float vol) { alSourcef(m_source, AL_GAIN, vol); }
 
 protected:
-    std::function<void()> m_requireDataCallback = nullptr;
+    std::function<bool()> m_requireDataCallback = nullptr;
+    bool m_endOfData = false; ///< GeneralsX: source stream signalled true EOF; stop restarting it
     ALuint m_source = 0;
     ALuint m_buffers[AL_STREAM_BUFFER_COUNT] = {};
     unsigned int m_current_buffer_idx = 0;

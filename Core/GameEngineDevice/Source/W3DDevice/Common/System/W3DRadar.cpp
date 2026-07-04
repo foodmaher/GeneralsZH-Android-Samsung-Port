@@ -76,7 +76,7 @@ inline Bool legalRadarPoint( Int px, Int py )
 
 //-------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-static WW3DFormat findFormat(const WW3DFormat formats[])
+static WW3DFormat findFormat(const WW3DFormat formats[], WW3DFormat fallback)
 {
 	for( Int i = 0; formats[ i ] != WW3D_FORMAT_UNKNOWN; i++ )
 	{
@@ -90,15 +90,23 @@ static WW3DFormat findFormat(const WW3DFormat formats[])
 
 	}
 	// GeneralsX @bugfix BenderAI 24/02/2026 W3DRadar: When DXVK/MoltenVK caps query returns no supported
-	// format (e.g. CheckDeviceFormat fails on macOS for R8G8B8/R5G6B5), fall back to X8R8G8B8 which
-	// is guaranteed to be supported on any modern Vulkan-capable GPU. Without this, texture creation
-	// silently produces a null D3D texture and crashes later in buildTerrainTexture.
+	// format (e.g. CheckDeviceFormat fails on macOS for R8G8B8/R5G6B5), fall back to a guaranteed format.
+	// Without this, texture creation silently produces a null D3D texture and crashes in buildTerrainTexture.
+	//
+	// GeneralsX @bugfix 14/06/2026 (iOS): the fallback MUST preserve an alpha channel for the
+	// overlay and shroud textures. On iOS, MoltenVK's caps query reports NO radar format as
+	// supported, so ALL THREE radar textures hit this fallback. The original code always returned
+	// X8R8G8B8 (no alpha); the shroud/overlay are then opaque and render solid black over the
+	// terrain -> black minimap in modes where the map starts shrouded (e.g. Generals Challenge).
+	// Each caller now passes the correct guaranteed-supported fallback: X8R8G8B8 for the opaque
+	// terrain layer, A8R8G8B8 (alpha) for the overlay and shroud layers. Both are universally
+	// supported on any Vulkan/Metal GPU.
 #if !defined(_WIN32)
-	fprintf(stderr, "W3DRadar: findFormat: no supported format found in caps query - falling back to WW3D_FORMAT_X8R8G8B8\n");
+	fprintf(stderr, "W3DRadar: findFormat: no supported format found in caps query - falling back to format %d\n", (int)fallback);
 	fflush(stderr);
 #endif
 	DEBUG_CRASH(("WW3DRadar: No appropriate texture format") );
-	return WW3D_FORMAT_X8R8G8B8;
+	return fallback;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -129,14 +137,14 @@ void W3DRadar::initializeTextureFormats()
 		WW3D_FORMAT_UNKNOWN				// keep this one last
 	};
 
-	// find a format for the terrain texture
-	m_terrainTextureFormat = findFormat(terrainFormats);
+	// find a format for the terrain texture (opaque base layer; no alpha needed)
+	m_terrainTextureFormat = findFormat(terrainFormats, WW3D_FORMAT_X8R8G8B8);
 
-	// find a format for the overlay texture
-	m_overlayTextureFormat = findFormat(overlayFormats);
+	// find a format for the overlay texture (alpha-blended over terrain; MUST keep alpha)
+	m_overlayTextureFormat = findFormat(overlayFormats, WW3D_FORMAT_A8R8G8B8);
 
-	// find a format for the shroud texture
-	m_shroudTextureFormat = findFormat(shroudFormats);
+	// find a format for the shroud texture (alpha-blended over terrain; MUST keep alpha)
+	m_shroudTextureFormat = findFormat(shroudFormats, WW3D_FORMAT_A8R8G8B8);
 
 }
 

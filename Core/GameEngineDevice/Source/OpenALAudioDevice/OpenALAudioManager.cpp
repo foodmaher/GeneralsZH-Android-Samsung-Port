@@ -68,6 +68,20 @@
 
 #include <AL/alext.h>
 
+// GeneralsX @bugfix 14/06/2026 Self-heal for stuck "disallow speech" flag.
+// Uninterruptible streamed speech (e.g. Generals Challenge enemy taunts) sets
+// disallowSpeech=TRUE so a speaker doesn't talk over himself; it's cleared when
+// the stream is detected stopped. But a finished finite-speech stream can linger
+// "not stopped" for a long time (its drained source keeps getting restarted in
+// OpenALAudioStream::update()), so the flag stays stuck and every subsequent
+// taunt is rejected with AHSV_NoSound — the player hears only the first taunt.
+// We record the frame the flag was set and force-clear it after longer than any
+// real voice line can last, so a genuinely-playing taunt is never cut off but a
+// stale flag can't silence the rest of the match.
+static Int s_disallowSpeechSetFrame = 0;
+// 30 logic frames/sec; 15s comfortably exceeds the longest taunt/EVA line.
+static const Int DISALLOW_SPEECH_MAX_FRAMES = 30 * 15;
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -517,7 +531,8 @@ void OpenALAudioManager::reset()
 	m_allEventsLoaded.clear();
 #endif
 
-	AudioManager::reset();
+	AudioManager::reset();   // clears m_disallowSpeech
+	s_disallowSpeechSetFrame = 0;  // GeneralsX @bugfix 14/06/2026 clear stale backstop frame across new game/map
 	stopAllAudioImmediately();
 	removeAllAudioRequests();
 	// This must come after stopAllAudioImmediately() and removeAllAudioRequests(), to ensure that
@@ -786,8 +801,13 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 		if (!handleToKill || foundSoundToReplace) {
 			stream = new OpenALAudioStream;
 			// When we need more data ask FFmpeg for more data.
-			stream->setRequireDataCallback([ffmpegFile, stream]() {
+			stream->setRequireDataCallback([ffmpegFile, stream]() -> bool {
 				ffmpegFile->decodePacket();
+				// GeneralsX @bugfix 14/06/2026 Report TRUE end-of-file so a finished one-shot
+				// speech (taunt) stops being restarted and can reach a stable AL_STOPPED. Keys
+				// on real EOF, not a bare decode-error, so long briefings/music and transient
+				// underruns are unaffected.
+				return !ffmpegFile->isAtEof();
 				});
 			
 			// When we receive a frame from FFmpeg, send it to OpenAL.
@@ -840,6 +860,7 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 		if (stream) {
 			if ((info->m_soundType == AT_Streaming) && event->getUninterruptible()) {
 				setDisallowSpeech(TRUE);
+				s_disallowSpeechSetFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
 			}
 			// AIL_set_stream_volume_pan(stream, curVolume, 0.5f);
 			playStream(event, stream);
@@ -2523,6 +2544,19 @@ void OpenALAudioManager::processPlayingList(void)
 		else
 		{
 			++it;
+		}
+	}
+
+	// GeneralsX @bugfix 14/06/2026 Backstop (belt-and-braces): the proper fix is the EOF
+	// propagation in OpenALAudioStream (a finished one-shot now reaches AL_STOPPED so the
+	// per-stream clear above fires the frame the audio ends). This timeout remains only as a
+	// safety net in case AL_STOPPED detection ever fails on this iOS/OpenAL stack. A negative
+	// delta means the logic frame counter reset under us (new game/map) — treat the recorded
+	// frame as stale and clear too. Never cuts a genuinely-playing line (longer than any voice).
+	if (getDisallowSpeech() && TheGameLogic) {
+		const Int sinceSet = (Int)TheGameLogic->getFrame() - s_disallowSpeechSetFrame;
+		if (sinceSet < 0 || sinceSet > DISALLOW_SPEECH_MAX_FRAMES) {
+			setDisallowSpeech(FALSE);
 		}
 	}
 

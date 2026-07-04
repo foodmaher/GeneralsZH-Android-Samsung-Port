@@ -42,6 +42,9 @@ public:
     void setUserData(void *user_data) { m_userData = user_data; }
     // Read & decode a packet from the container. Note that we could/should split this step
     bool decodePacket();
+    // GeneralsX @bugfix 14/06/2026 TRUE end-of-file reached (av_read_frame==AVERROR_EOF),
+    // as opposed to a transient decode error. Used to detect a finished one-shot stream.
+    bool isAtEof() const { return m_atEof; }
     void seekFrame(int frame_idx);
     bool hasAudio() const;
 
@@ -72,6 +75,7 @@ private:
     static int readPacket(void *opaque, uint8_t *buf, int buf_size);
     const FFmpegStream *findMatch(int type) const;
 
+    bool m_atEof = false; ///< GeneralsX: true after av_read_frame hit AVERROR_EOF
     FFmpegFrameCallback m_frameCallback = nullptr;
     AVFormatContext *m_fmtCtx = nullptr;
     AVIOContext *m_avioCtx = nullptr;

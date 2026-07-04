@@ -51,6 +51,9 @@
 #endif
 
 #include "dx8wrapper.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 // GeneralsX @build BenderAI 10/02/2026 - Need LoadLibrary/GetProcAddress/FreeLibrary for dynamic loading
 #include "module_compat.h"
 // GeneralsX @build felipebraz 16/02/2026 - Need dlerror() for dlopen() error reporting on Linux
@@ -572,8 +575,15 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 #ifdef _WIN32
 		D3D8Lib = LoadLibrary("D3D8.DLL");
 #elif defined(__APPLE__)
-		fprintf(stderr, "DEBUG: DX8Wrapper::Init() - Loading libdxvk_d3d8.dylib (macOS)...\n");
+		fprintf(stderr, "DEBUG: DX8Wrapper::Init() - Loading libdxvk_d3d8.dylib (Apple)...\n");
+		// iOS confines dlopen to the app bundle; bare names don't resolve there, so
+		// load from the embedded Frameworks directory explicitly. macOS keeps the
+		// bare name (resolved via DYLD_LIBRARY_PATH set by run.sh).
+		#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+		D3D8Lib = LoadLibrary("@executable_path/Frameworks/libdxvk_d3d8.0.dylib");
+		#else
 		D3D8Lib = LoadLibrary("libdxvk_d3d8.dylib");
+		#endif
 		fprintf(stderr, "DEBUG: DX8Wrapper::Init() - LoadLibrary result: %p\n", (void*)D3D8Lib);
 		if (D3D8Lib == nullptr) {
 			const char* error = dlerror();

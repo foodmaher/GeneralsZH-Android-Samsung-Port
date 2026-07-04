@@ -47,7 +47,13 @@
 #if defined(SAGE_USE_FREETYPE) && !defined(_WIN32)
     #include <ft2build.h>
     #include FT_FREETYPE_H
-    #include <fontconfig/fontconfig.h>
+    #if defined(__APPLE__)
+        #include <TargetConditionals.h>
+    #endif
+    // iOS has no fontconfig; fonts resolve from a bundled fonts/ directory instead
+    #if !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+        #include <fontconfig/fontconfig.h>
+    #endif
 #endif
 
 /*

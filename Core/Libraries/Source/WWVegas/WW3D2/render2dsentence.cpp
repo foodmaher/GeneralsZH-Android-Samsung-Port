@@ -1646,6 +1646,56 @@ FontCharsClass::Update_Current_Buffer (int char_width)
 
 #if defined(SAGE_USE_FREETYPE) && !defined(_WIN32)
 
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+
+#include <cctype>
+#include <cstdio>
+#include <unistd.h>
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	Locate_Font_FontConfig (iOS)
+//
+// iOS has no fontconfig and no user-accessible system font files. Fonts are
+// resolved from a "fonts" directory below the current working directory (the
+// app's Documents folder, where game data also lives). The requested face name
+// is normalized (lowercase, spaces stripped) and tried as <name>.ttf/.otf/.ttc;
+// arial.ttf serves as the universal fallback since the game UI is Arial-based.
+////////////////////////////////////////////////////////////////////////////////////
+const char *
+FontCharsClass::Locate_Font_FontConfig (const char *font_name)
+{
+	char normalized[128];
+	int n = 0;
+	for ( const char *p = font_name; *p != '\0' && n < (int)sizeof(normalized) - 1; ++p ) {
+		if ( *p == ' ' ) {
+			continue;
+		}
+		normalized[n++] = (char)tolower( (unsigned char)*p );
+	}
+	normalized[n] = '\0';
+
+	static const char *extensions[] = { ".ttf", ".otf", ".ttc" };
+	char candidate[256];
+	for ( size_t i = 0; i < sizeof(extensions) / sizeof(extensions[0]); ++i ) {
+		snprintf( candidate, sizeof(candidate), "fonts/%s%s", normalized, extensions[i] );
+		if ( access( candidate, R_OK ) == 0 ) {
+			FreetypeFontPath = candidate;
+			return FreetypeFontPath;
+		}
+	}
+
+	// Fall back to the Arial-equivalent face shipped with the app
+	if ( access( "fonts/arial.ttf", R_OK ) == 0 ) {
+		FreetypeFontPath = "fonts/arial.ttf";
+		return FreetypeFontPath;
+	}
+
+	return nullptr;
+}
+
+#else // !TARGET_OS_IPHONE
+
 ////////////////////////////////////////////////////////////////////////////////////
 //
 //	Locate_Font_FontConfig
@@ -1703,6 +1753,8 @@ FontCharsClass::Locate_Font_FontConfig (const char *font_name)
 
 	return font_path;
 }
+
+#endif // !TARGET_OS_IPHONE
 
 
 ////////////////////////////////////////////////////////////////////////////////////
