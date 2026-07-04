@@ -152,7 +152,8 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
     # The cross file is generated from a template so the iPhoneOS SDK path comes
     # from xcrun (Xcode-beta / renamed installs) instead of a hardcoded Xcode.app.
     execute_process(COMMAND xcrun --sdk iphoneos --show-sdk-path
-                    OUTPUT_VARIABLE IOS_SDK OUTPUT_STRIP_TRAILING_WHITESPACE)
+                    OUTPUT_VARIABLE IOS_SDK OUTPUT_STRIP_TRAILING_WHITESPACE
+                    COMMAND_ERROR_IS_FATAL ANY)
     configure_file(${CMAKE_SOURCE_DIR}/cmake/meson-arm64-ios-cross.ini.in
                    ${CMAKE_BINARY_DIR}/meson-arm64-ios-cross.ini @ONLY)
     set(DXVK_MESON_MACHINE_ARGS --cross-file ${CMAKE_BINARY_DIR}/meson-arm64-ios-cross.ini)

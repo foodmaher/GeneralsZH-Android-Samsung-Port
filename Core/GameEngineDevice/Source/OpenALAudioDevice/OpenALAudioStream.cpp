@@ -176,6 +176,7 @@ void OpenALAudioStream::update()
                 break;
             }
             num_queued = refreshedQueued;
+            m_stalledProbes = 0;  // GeneralsX @bugfix 04/07/2026 healthy refill: stalls must be CONSECUTIVE to latch EOF, not accumulated over the stream's lifetime
         }
     }
 

@@ -299,7 +299,22 @@ int main(int argc, char* argv[])
 						     memcmp(buf, "warn:  D3D8De", 13) == 0)) {
 							return len;  // drop known per-frame spam, report consumed
 						}
-						if (s_logWritten >= kLogCap) return len;
+						if (s_logWritten >= kLogCap) {
+							// past the cap, still record errors — the tail of a dying
+							// session is this log's whole reason to exist
+							static bool s_capMarked = false;
+							if (!s_capMarked) {
+								s_capMarked = true;
+								const char *mark = "[log capped: non-error lines dropped from here]\n";
+								write(s_logFd, mark, strlen(mark));
+							}
+							if (len > 4 && (memcmp(buf, "err:", 4) == 0 ||
+							                memcmp(buf, "ERROR", 5) == 0 ||
+							                memcmp(buf, "FATAL", 5) == 0)) {
+								write(s_logFd, buf, (size_t)len);
+							}
+							return len;
+						}
 						ssize_t w = write(s_logFd, buf, (size_t)len);
 						if (w > 0) s_logWritten += (size_t)w;
 						return len;
@@ -403,8 +418,10 @@ int main(int argc, char* argv[])
 							std::filesystem::remove_all(entry.path(), removeError);
 						}
 					}
-					FILE *s = fopen(sentinel, "w");
-					if (s) fclose(s);
+					if (!fsError) {  // a failed scan must retry next launch, not fail closed forever
+						FILE *s = fopen(sentinel, "w");
+						if (s) fclose(s);
+					}
 				}
 			}
 		}
