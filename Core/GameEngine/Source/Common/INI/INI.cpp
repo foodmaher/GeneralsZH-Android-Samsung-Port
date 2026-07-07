@@ -1691,7 +1691,14 @@ Type scanType(std::string_view token)
                 return result;
                 #endif
         }
-
+        // GeneralsX @build Android port 07/07/2026 `if constexpr` only discards the
+        // untaken branch's statements -- code AFTER the closing brace is still
+        // compiled for EVERY instantiation, including Type=float, so the generic
+        // integer path below was calling the deleted floating-point from_chars on
+        // Android even though it's dead at runtime (both branches above return).
+        // `else` puts it inside the same if-constexpr, correctly excluding it.
+        else
+        {
         // TheSuperHackers @info std::from_chars cannot parse "-1" as uint32 so the result needs to be int64 for integers.
 	std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
 	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
@@ -1702,6 +1709,7 @@ Type scanType(std::string_view token)
 	}
 
 	return static_cast<Type>(result);
+        }
 }
 
 #endif
