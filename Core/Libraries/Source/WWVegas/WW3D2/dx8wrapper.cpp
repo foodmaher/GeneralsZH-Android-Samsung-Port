@@ -1105,6 +1105,23 @@ void DX8Wrapper::Enumerate_Devices()
 				}
 			}
 
+			// TheSuperHackers @bugfix Synthesize one resolution from the native
+			// screen size when the driver reported zero modes -- DXVK's
+			// D3D8-over-Vulkan adapter on Android always reports zero (there's
+			// no exclusive-fullscreen mode list on that platform). Without
+			// this, the device is never added below, _RenderDeviceNameTable/
+			// _RenderDeviceDescriptionTable/_RenderDeviceShortNameTable stay
+			// permanently empty, and every caller that indexes them (e.g. the
+			// Options resolution list, WWASSERT bounds checks that are no-ops
+			// in release) reads out of bounds and crashes.
+			if (desc.Enumerate_Resolutions().Count() == 0) {
+				int nativeW = 0, nativeH = 0;
+				float density = 1.0f;
+				if (GetNativeDisplaySize(nativeW, nativeH, density) && nativeW > 0 && nativeH > 0) {
+					desc.add_resolution(nativeW, nativeH, 32);
+				}
+			}
+
 			// IML: If the device has one or more valid resolutions add it to the device list.
 			// NOTE: Testing has shown that there are drivers with zero resolutions.
 			if (desc.Enumerate_Resolutions().Count() > 0) {
@@ -1610,15 +1627,24 @@ const RenderDeviceDescClass & DX8Wrapper::Get_Render_Device_Desc(int deviceidx)
 
 	// if the device index is -1 then we want the current device
 	if (deviceidx == -1) {
-		WWASSERT(CurRenderDevice >= 0);
-		WWASSERT(CurRenderDevice < _RenderDeviceNameTable.Count());
-		return _RenderDeviceDescriptionTable[CurRenderDevice];
+		deviceidx = CurRenderDevice;
 	}
 
-	// We can only ask for multiple device information if the devices
-	// have been detected.
-	WWASSERT(deviceidx >= 0);
-	WWASSERT(deviceidx < _RenderDeviceNameTable.Count());
+	// TheSuperHackers @bugfix Return a valid empty descriptor instead of
+	// indexing out of bounds when no adapter was enumerated. Enumerate_Devices()
+	// only adds an adapter to _RenderDeviceDescriptionTable if it reported at
+	// least one display mode; DXVK's D3D8-over-Vulkan adapter on Android
+	// reports zero (there's no exclusive-fullscreen mode concept there), so
+	// the table stayed empty and this indexed out of bounds -- WWASSERT is a
+	// no-op in release builds, so this crashed (SIGSEGV deref'ing a
+	// near-null RenderDeviceDescClass&) the moment anything asked for the
+	// device description, e.g. building the Options resolution list.
+	if (deviceidx < 0 || deviceidx >= _RenderDeviceDescriptionTable.Count())
+	{
+		static const RenderDeviceDescClass emptyDesc;
+		return emptyDesc;
+	}
+
 	return _RenderDeviceDescriptionTable[deviceidx];
 }
 

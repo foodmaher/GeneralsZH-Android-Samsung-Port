@@ -630,6 +630,15 @@ static void buildFilteredResolutions()
 		}
 		if (!duplicate) s_filteredResolutions.push_back({w, h, bits});
 	}
+
+	// TheSuperHackers @bugfix Android's D3D8-over-Vulkan adapter reports zero
+	// enumerated display modes (no exclusive-fullscreen concept there), so
+	// `resolutions` above is legitimately empty -- fall back to the native
+	// screen size so the Options resolution list isn't left empty.
+	if (s_filteredResolutions.empty() && nativeW > 0 && nativeH > 0) {
+		s_filteredResolutions.push_back({nativeW, nativeH, 32});
+	}
+
 	s_filteredDirty = false;
 }
 
