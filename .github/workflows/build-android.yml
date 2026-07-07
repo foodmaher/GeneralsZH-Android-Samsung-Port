@@ -150,19 +150,46 @@ jobs:
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
-      - name: Install build tools (meson, ninja, pkg-config, glslang)
+      - name: Install build tools (meson, ninja, pkg-config, glslang, ccache)
         run: |
           # apt's meson, not pip: ubuntu-latest (24.04) marks the system Python
           # as externally-managed (PEP 668), so a plain `pip install`, even
           # with --user, refuses to run outside a venv.
           # glslang-tools: DXVK compiles its GLSL blit/present shaders to
           # SPIR-V at build time with glslangValidator (host tool).
+          # ccache: the z_generals target alone is ~1.6M LOC and was being
+          # fully recompiled from scratch on every run (only vcpkg/DXVK/SDK
+          # were cached) -- an object-level compiler cache turns a one-file
+          # change back into a near-incremental build instead of a 20-40 min
+          # full rebuild.
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
-            ninja-build meson pkg-config glslang-tools
+            ninja-build meson pkg-config glslang-tools ccache
           meson --version
           ninja --version
           glslangValidator --version | head -1
+          ccache --version | head -1
+
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-android-${{ env.PRESET }}-
+
+      - name: Configure ccache
+        run: |
+          set -euo pipefail
+          ccache --set-config=max_size=3G
+          # Cross-compiles (host clang, target arm64-android via NDK sysroot)
+          # confuse ccache's default mtime-based direct mode across different
+          # checkouts; content hashing keeps hits reliable and is barely
+          # slower once warm.
+          ccache --set-config=compiler_check=content
+          ccache --zero-stats
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
 
       - name: Restore vcpkg cache
         id: cache-vcpkg
@@ -215,7 +242,10 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p logs
-          cmake --preset ${{ env.PRESET }} 2>&1 | tee logs/configure_android.log
+          cmake --preset ${{ env.PRESET }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            2>&1 | tee logs/configure_android.log
 
       - name: Build z_generals (libmain.so) + DXVK d3d8/d3d9
         run: |
@@ -225,6 +255,7 @@ jobs:
           # cross-compile error in the 1.6M-LOC engine instead of one per
           # round-trip; the exit code still fails the step when anything broke.
           cmake --build build/${{ env.PRESET }} --target z_generals dxvk_d3d8_install -- -k 0 2>&1 | tee logs/build_android.log
+          ccache --show-stats
 
       - name: Verify artifacts
         run: |
@@ -362,3 +393,14 @@ jobs:
         with:
           path: build/${{ env.PRESET }}/_deps/dxvk-build-android
           key: dxvk-android-${{ runner.os }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in') }}
+
+      # Always re-save under this run's unique key (the restore-keys prefix
+      # match above means later runs pick up the freshest available cache);
+      # actions/cache never overwrites an existing exact key, and github.run_id
+      # is unique per run, so this never no-ops into a skipped save.
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}

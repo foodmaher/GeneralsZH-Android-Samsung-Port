@@ -250,6 +250,13 @@ Render2DSentenceClass::Set_Location (const Vector2 &loc)
 Vector2
 Render2DSentenceClass::Get_Text_Extents (const WCHAR *text)
 {
+	// TheSuperHackers @bugfix Guard against a null Font: this can legitimately
+	// happen when font resolution/loading failed upstream (e.g. an unavailable
+	// localized font), and this method is reachable directly (e.g. for layout
+	// measurement) without going through Build_Sentence()'s null check first.
+	if (Font == nullptr || text == nullptr)
+		return Vector2 (0, 0);
+
 	Vector2 extent (0, Font->Get_Char_Height());
 
 	while (*text) {
@@ -272,6 +279,10 @@ Render2DSentenceClass::Get_Text_Extents (const WCHAR *text)
 Vector2
 Render2DSentenceClass::Get_Formatted_Text_Extents (const WCHAR *text)
 {
+	// TheSuperHackers @bugfix Guard against a null Font (see Get_Text_Extents).
+	if (Font == nullptr || text == nullptr)
+		return Vector2 (0, 0);
+
 	return Build_Sentence_Not_Centered(text, nullptr, nullptr, true);
 }
 
@@ -706,6 +717,13 @@ float FindStartingXPos( const WCHAR *text )
 ////////////////////////////////////////////////////////////////////////////////////
 void	Render2DSentenceClass::Build_Sentence_Centered (const WCHAR *text, int *hkX, int *hkY)
 {
+	// TheSuperHackers @bugfix Guard against a null Font (see Get_Text_Extents):
+	// this function is reachable directly from Build_Sentence(), which already
+	// checks for null, but also indirectly (e.g. by future callers), so check
+	// again here defensively.
+	if (Font == nullptr || text == nullptr)
+		return;
+
 	float char_height = Font->Get_Char_Height ();
 	int		wordWidth = 0;
 	int notCenteredHotkeyX = 0;
@@ -952,6 +970,13 @@ void	Render2DSentenceClass::Build_Sentence_Centered (const WCHAR *text, int *hkX
 ////////////////////////////////////////////////////////////////////////////////////
 Vector2	Render2DSentenceClass::Build_Sentence_Not_Centered (const WCHAR *text, int *hkX, int *hkY, bool justCalcExtents)
 {
+	// TheSuperHackers @bugfix Guard against a null Font (see Get_Text_Extents):
+	// Get_Formatted_Text_Extents() calls this directly, bypassing the null
+	// check in Build_Sentence(), so a font that failed to load could otherwise
+	// reach Font->Get_Char_Height()/Get_Char_Spacing() below with Font==nullptr.
+	if (Font == nullptr || text == nullptr)
+		return Vector2 (0, 0);
+
 	Vector2 cursor = Cursor;
 	int textureStartX = TextureStartX;
 	float maxX = 0;
