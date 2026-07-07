@@ -16,19 +16,23 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// GeneralsX @build Android port 06/07/2026
+// GeneralsX @build Android port 06/07/2026, reworked 07/07/2026
 // Thin shell over SDL3's SDLActivity. Responsibilities:
 //  1. Name the native libraries to load (libmain.so = the game).
 //  2. On launch, extract the small bundled runtime files (fonts/, dxvk.conf,
 //     DefaultOptions.ini) from APK assets into the external files dir, which
 //     SDL3Main.cpp makes the game's working directory. Game .big archives are
-//     NOT bundled — the user copies their own (see docs/port/ANDROID_PORT.md).
-//  3. Show a readable error instead of a native crash when game data is
-//     missing, since that is the #1 first-run failure mode.
+//     NOT bundled — the user picks their own via the GeneralsZH Setup app.
+//  3. If no valid game folder is configured yet (checked via SetupActivity's
+//     saved preference, mirroring the marker file SDL3Main.cpp reads),
+//     redirect to Setup INSTEAD OF calling super.onCreate() — this means
+//     libmain.so is never dlopen'd on a misconfigured install, so a missing
+//     game data folder can never look like (or mask) a native crash.
 
 package com.generalsx.zerohour;
 
-import android.app.AlertDialog;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.util.Log;
@@ -45,20 +49,14 @@ public class GeneralsZHActivity extends SDLActivity {
 
     private static final String TAG = "GeneralsZH";
 
-    // Marker: at least one retail archive must exist next to the extracted
-    // config before the engine can boot into anything but a black screen.
-    private static final String[] REQUIRED_GAME_FILES = {
-        "INIZH.big", "INI.big"
-    };
-
     @Override
     protected String[] getLibraries() {
         return new String[] {
             "SDL3",
             // libmain.so — the game itself (z_generals target, android-vulkan
-            // preset). Its DT_NEEDED entries (SDL3_image, openal, c++_shared)
-            // resolve from the same APK; the DXVK d3d8/d3d9 libraries are
-            // dlopen()ed by the engine at D3D init.
+            // preset). Its DT_NEEDED entries (SDL3_image, openal, c++_shared,
+            // gamespy) resolve from the same APK; the DXVK d3d8/d3d9
+            // libraries are dlopen()ed by the engine at D3D init.
             "main"
         };
     }
@@ -66,8 +64,40 @@ public class GeneralsZHActivity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         extractBundledRuntime();
-        warnIfGameDataMissing();
+
+        String gamePath = getSavedGamePath();
+        boolean haveCustomPath = gamePath != null && SetupActivity.isValidGameFolder(new File(gamePath));
+        boolean haveLegacyPath = !haveCustomPath && isValidGameFolder(legacyGameDataDir());
+
+        if (!haveCustomPath && !haveLegacyPath) {
+            // Never touch libmain.so on a misconfigured install: redirect to
+            // Setup instead of letting SDLActivity load the native library
+            // into an app state that can only end in a black screen or a
+            // confusing crash the user has no way to diagnose.
+            Log.i(TAG, "no valid game folder configured; redirecting to Setup");
+            startActivity(new Intent(this, SetupActivity.class));
+            finish();
+            return;
+        }
+
         super.onCreate(savedInstanceState);
+    }
+
+    private String getSavedGamePath() {
+        SharedPreferences prefs = getSharedPreferences(SetupActivity.PREFS_NAME, MODE_PRIVATE);
+        return prefs.getString(SetupActivity.PREF_GAME_PATH, null);
+    }
+
+    // Legacy convention from before the in-app Setup flow existed (an adb
+    // push into <external>/GameData) — still honored so nothing breaks for
+    // anyone who already has files there.
+    private File legacyGameDataDir() {
+        File root = getExternalFilesDir(null);
+        return root != null ? new File(root, "GameData") : null;
+    }
+
+    private boolean isValidGameFolder(File dir) {
+        return SetupActivity.isValidGameFolder(dir);
     }
 
     /**
@@ -118,34 +148,5 @@ public class GeneralsZHActivity extends SDLActivity {
         } catch (IOException e) {
             Log.e(TAG, "asset extraction failed for " + assetPath, e);
         }
-    }
-
-    /**
-     * The engine dies inscrutably without its .big archives; catch the
-     * missing-data case here with instructions instead. Non-blocking: the
-     * dialog shows over the (black) game surface and the user can still
-     * back out.
-     */
-    private void warnIfGameDataMissing() {
-        File root = getExternalFilesDir(null);
-        if (root == null) {
-            return;
-        }
-        File gameData = new File(root, "GameData");
-        File effectiveRoot = gameData.isDirectory() ? gameData : root;
-        for (String name : REQUIRED_GAME_FILES) {
-            if (new File(effectiveRoot, name).exists()) {
-                return;
-            }
-        }
-        final String path = effectiveRoot.getAbsolutePath();
-        runOnUiThread(() -> new AlertDialog.Builder(this)
-            .setTitle("Game data not found")
-            .setMessage("Copy your Command & Conquer Generals Zero Hour game files "
-                + "(the .big archives, Data/, ZH_Generals/ from your own install) to:\n\n"
-                + path + "\n\nover USB or with: adb push <files> \""
-                + path + "\"\n\nSee docs/port/ANDROID_PORT.md in the repository.")
-            .setPositiveButton("OK", null)
-            .show());
     }
 }

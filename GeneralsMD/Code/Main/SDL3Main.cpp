@@ -494,10 +494,38 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		// Game data: prefer <external>/GameData when the user created it,
-		// otherwise the external files dir itself is the game root.
+		// Game data: highest priority is a folder the user picked in-app via
+		// the GeneralsZH Setup app's folder browser (no adb needed) — it
+		// writes the chosen absolute path as plain text into
+		// <internal>/gamedata_path.txt before this activity ever starts.
+		// Falls back to <external>/GameData (the adb-push convention this
+		// port originally documented), then the external files dir itself.
 		bool didChdir = false;
-		if (externalPath != nullptr) {
+		if (internalPath != nullptr) {
+			char markerPath[1024];
+			snprintf(markerPath, sizeof(markerPath), "%s/gamedata_path.txt", internalPath);
+			FILE *marker = fopen(markerPath, "r");
+			if (marker != nullptr) {
+				char customPath[900] = {0};
+				if (fgets(customPath, sizeof(customPath), marker) != nullptr) {
+					size_t len = strlen(customPath);
+					while (len > 0 && (customPath[len - 1] == '\n' || customPath[len - 1] == '\r')) {
+						customPath[--len] = '\0';
+					}
+					if (len > 0) {
+						if (chdir(customPath) == 0) {
+							didChdir = true;
+							fprintf(stderr, "INFO: Android working directory (Setup-selected): %s\n", customPath);
+						} else {
+							fprintf(stderr, "WARNING: Setup-selected game folder '%s' set but chdir failed: %s\n",
+							        customPath, strerror(errno));
+						}
+					}
+				}
+				fclose(marker);
+			}
+		}
+		if (!didChdir && externalPath != nullptr) {
 			char gameData[1024];
 			snprintf(gameData, sizeof(gameData), "%s/GameData", externalPath);
 			if (access(gameData, R_OK) == 0 && chdir(gameData) == 0) {

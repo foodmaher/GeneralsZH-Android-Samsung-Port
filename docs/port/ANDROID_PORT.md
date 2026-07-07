@@ -171,32 +171,56 @@ export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<version>
 The first configure builds vcpkg deps (ffmpeg, curl+openssl, freetype…) for
 `arm64-android` — expect 30–60 minutes cold.
 
-## 4. Game data
+## 4. Game data and first run — the in-app Setup flow (no adb, no PC needed)
 
-No assets ship in the APK (2.7 GB, and they're the user's own). After
-installing:
+No assets ship in the APK (2.7 GB, and they're the user's own). Installing
+the APK also installs a **second launcher icon, "GeneralsZH Setup"**
+(`SetupActivity`) — a standalone screen for everything that used to require
+`adb`:
 
-```sh
-# From a machine that has the game (see scripts/get-assets.sh for SteamCMD):
-adb push ~/GeneralsX/GeneralsZH/. \
-    /storage/emulated/0/Android/data/com.generalsx.zerohour/files/
-```
+1. **Install the APK, then open "GeneralsZH Setup"** (not the game icon yet).
+2. Tap **Select Game Folder**. First time, Android will ask for the "All
+   files access" permission (`MANAGE_EXTERNAL_STORAGE`) — a normal system
+   permission screen, no root, no PC. Grant it, come back, tap the button
+   again.
+3. A plain folder browser opens, starting at the device's internal storage
+   root. Copy your own Command & Conquer Generals Zero Hour install (the
+   `*.big` archives, `Data/`, `ZH_Generals/`) into **any** folder you like
+   first — e.g. `Downloads/GeneralsZH/`, reachable from any file manager or a
+   normal USB-cable "transfer files" connection, no special app needed — then
+   navigate to it in the picker and tap **Use This Folder**. The picker
+   flags a folder green once it sees `INIZH.big`/`INI.big`.
+4. Tap **Launch Game** (or go back to the regular game icon — both work; the
+   folder choice is saved).
 
-or copy the same files over USB/MTP with any file manager into
-`Android/data/com.generalsx.zerohour/files/`. Both target devices allow this
-for the app's own directory without extra permissions. Expected contents:
-`*.big`, `Data/`, `ZH_Generals/`, plus the auto-extracted `fonts/`,
-`dxvk.conf`, `DefaultOptions.ini` (the app extracts those from the APK on
-first launch). A `GameData/` subfolder is also honored if you prefer keeping
-the root clean.
+The engine reads the picked path from a marker file
+(`SDL3Main.cpp` chdir logic) written by Setup — no `adb push` into the
+scoped-storage-restricted `Android/data/<pkg>/files` folder is needed anymore
+(that convention still works if you already have files there, but is no
+longer the documented path). Auto-extracted runtime files (`fonts/`,
+`dxvk.conf`, `DefaultOptions.ini`) still land in the app's own external files
+dir automatically on first launch, independent of where the game data lives.
 
 User data (Options.ini, saves, map cache) lives in **internal** storage via
-`HOME` (`/data/data/com.generalsx.zerohour/files/.local/share/GeneralsX/…`) and
-survives asset reshuffles. The DXVK shader cache goes to the app cache dir
-(OS-purgeable). The engine log is mirrored to
-`files/generals-stderr.log` (+ `-prev.log` from the previous session) next to
-the game data — pull it with `adb pull` when reporting issues; native stderr is
-otherwise invisible on Android.
+`HOME` and survives reinstalls of the game-data folder. The DXVK shader cache
+goes to the app cache dir (OS-purgeable).
+
+### Reading logs without adb
+
+Open **GeneralsZH Setup → View Logs**. It shows, without any PC:
+- `crash.log` — written by a signal handler that installs the instant
+  `libmain.so` is loaded (an ELF constructor, before any engine code runs),
+  so it captures crashes from *before* the engine's own logging is even set
+  up — the single biggest gap in the original adb-only workflow, where a
+  crash at library-load time was invisible without a rooted device.
+- `generals-stderr.log` (+ `-prev.log`) — the regular engine log, active once
+  `main()` starts.
+
+Use the **Share** button there to send the log to yourself (email, messaging
+app, anywhere) directly from the phone. `adb pull`/`adb logcat` still work
+too and remain useful for anything the in-app viewer can't show (an OS-level
+tombstone needs adb + often root; `crash.log` is the no-root substitute for
+the common case).
 
 ## 5. Verification checklist for first device bring-up
 
@@ -239,6 +263,33 @@ In dependency order; each gate isolates a failure class (the iOS port's ladder,
     code, also expected to hold).
 
 ## 6. Known gaps / next steps
+
+### UX overhaul: in-app Setup, folder picker, crash log viewer (07/07/2026)
+
+Real-device feedback: sideloading testers don't reliably have a PC handy for
+`adb`, and a crash before the engine's own logging starts (library-load time)
+was completely invisible without root. Addressed with three new pieces
+(§4 documents the user-facing flow):
+- `AndroidCrashHandler.cpp` — a signal handler installed as an ELF
+  constructor (runs at `dlopen()` time, before `JNI_OnLoad`/`main()`/any
+  engine code), writing signal + fault address to internal storage via raw
+  `open()`/`write()`/`close()` syscalls only (no libc buffering, survives a
+  corrupted heap), then chains to the previous handler so the OS tombstone
+  still generates too. Path is derived from `getuid()/100000` rather than a
+  hardcoded `/data/data/...`, since that shortcut only resolves correctly for
+  Android's primary user profile (breaks under a work profile / secondary
+  user / guest mode).
+- `SetupActivity` / `FolderPickerActivity` / `LogViewerActivity` — a second,
+  always-present launcher icon ("GeneralsZH Setup") with a plain
+  `java.io.File`-backed folder browser (deliberately not the SAF
+  `ACTION_OPEN_DOCUMENT_TREE` picker, which hands back a `content://` tree
+  the engine's plain `fopen()`/`chdir()` can't use without copying the whole
+  2-3 GB game data first) gated behind the `MANAGE_EXTERNAL_STORAGE`
+  permission, plus an in-app log viewer with Copy/Share buttons.
+- `GeneralsZHActivity` no longer calls `super.onCreate()` (which triggers
+  `System.loadLibrary("main")`) at all when no valid game folder is
+  configured — redirects to Setup instead, so a missing-game-data install
+  can never look like, or mask, a native crash.
 
 ### Fixed from real-device testing (07/07/2026)
 

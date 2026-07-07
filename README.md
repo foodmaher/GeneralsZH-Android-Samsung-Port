@@ -121,7 +121,13 @@ Run workflow**. Every CI build is signed with the same committed debug key and
 gets an increasing versionCode, so you can install a newer run **over** an
 older one without uninstalling. (On a fork, enable Actions once: Actions tab →
 "I understand my workflows, go ahead and enable them".) Download the APK
-artifact from the run and `adb install` it.
+artifact from the run and install it.
+
+**No adb needed either, for setup or logs**: the APK installs a second icon,
+**"GeneralsZH Setup"**, with an in-app folder picker (point it at wherever
+you copied your own game files — Downloads, an SD card, anywhere) and a log
+viewer with a Share button. See [docs/port/ANDROID_PORT.md §4](docs/port/ANDROID_PORT.md#4-game-data-and-first-run--the-in-app-setup-flow-no-adb-no-pc-needed)
+for the full first-run walkthrough.
 
 Building locally instead needs the Android NDK (r26+), vcpkg, meson/ninja:
 
@@ -131,7 +137,6 @@ git submodule update --init references/fbraz3-dxvk
 export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<version>
 ./scripts/build/android/build-android-zh.sh        # game -> libmain.so, DXVK -> .so, verified
 ./scripts/build/android/package-android-zh.sh --install
-adb push <your game files>/. /storage/emulated/0/Android/data/com.generalsx.zerohour/files/
 ```
 
 **→ The full guide (device/driver matrix, storage layout, bring-up checklist):

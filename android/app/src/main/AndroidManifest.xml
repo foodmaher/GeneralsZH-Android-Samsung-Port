@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Vulkan is the entire render path (D3D8 -> DXVK -> Vulkan); refuse to
          install on devices without a Vulkan 1.1 driver. DXVK 2.6 itself needs
@@ -14,9 +15,15 @@
         android:name="android.hardware.touchscreen"
         android:required="true" />
 
-    <!-- No permissions: game data lives in the app's own external files dir
-         (/storage/emulated/0/Android/data/com.generalsx.zerohour/files),
-         which needs no runtime permission to read or write. -->
+    <!-- GeneralsX @build Android port 07/07/2026 "All files access": lets the
+         in-app folder browser (FolderPickerActivity) resolve to a real
+         filesystem path anywhere in shared storage (Downloads, an SD card,
+         wherever the user already has the game files) — no adb push, no
+         restrictive per-folder scoped-storage grants. tools:ignore silences
+         the Play-policy lint warning; this APK is sideloaded, not
+         Play-distributed, so that policy does not apply. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <application
         android:label="@string/app_name"
@@ -40,5 +47,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- GeneralsX @build Android port 07/07/2026 A second, always-present
+             launcher icon: configuring the game folder or reading a crash log
+             must never depend on the game itself having launched successfully. -->
+        <activity
+            android:name=".SetupActivity"
+            android:exported="true"
+            android:label="GeneralsZH Setup"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".FolderPickerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
+            android:name=".LogViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
