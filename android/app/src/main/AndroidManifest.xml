@@ -37,7 +37,7 @@
         <activity
             android:name=".GeneralsZHActivity"
             android:exported="true"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="landscape"
             android:launchMode="singleInstance"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:preferMinimalPostProcessing="true"
@@ -50,11 +50,26 @@
 
         <!-- GeneralsX @build Android port 07/07/2026 A second, always-present
              launcher icon: configuring the game folder or reading a crash log
-             must never depend on the game itself having launched successfully. -->
+             must never depend on the game itself having launched successfully.
+
+             GeneralsX @bugfix Android port 07/07/2026 Locked to the same
+             absolute "landscape" as GeneralsZHActivity (was unspecified, i.e.
+             portrait-first): a real-device log caught the game's D3D device
+             creation reading a portrait window size (1156x2510 instead of
+             the correct 2510x1156) because Setup -> Launch Game triggered a
+             portrait->landscape rotation that hadn't finished settling by
+             the time WW3D::Init() queried the window size a few seconds
+             later. Keeping both activities landscape the whole time removes
+             the rotation — and the race — entirely. GeneralsZHActivity was
+             also switched here from sensorLandscape (accelerometer-based) to
+             plain landscape: sensorLandscape is what actually produced the
+             race, since it can take a moment to settle instead of applying
+             immediately like a plain absolute orientation. -->
         <activity
             android:name=".SetupActivity"
             android:exported="true"
             android:label="GeneralsZH Setup"
+            android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

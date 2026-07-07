@@ -315,9 +315,26 @@ static void Resolve_Present_BackBuffer_Size(int gameW, int gameH, bool isWindowe
 		int windowH = gameH;
 		float density = 1.0f;
 		if (DX8Wrapper::GetWindowSize(windowW, windowH, density)) {
-			outW = (UINT)windowW;
-			outH = (UINT)windowH;
-			return;
+			// GeneralsX @bugfix Android port 07/07/2026 A live re-query can land mid
+			// screen-rotation (observed on a real device: Setup -> Launch Game
+			// transitions between two landscape-locked activities, but a stale
+			// SDL window-size cache still briefly reported a transposed, portrait
+			// shape here) and hand back width/height swapped from what the game
+			// actually requested. gameW/gameH are already known-good landscape
+			// values resolved earlier at startup from this same query once
+			// orientation had settled; if the live query's orientation now
+			// disagrees with that known-good one, trust the known-good value
+			// instead of one caught mid-flight.
+			bool gameIsLandscape = gameW > gameH;
+			bool windowIsLandscape = windowW > windowH;
+			if (gameIsLandscape == windowIsLandscape) {
+				outW = (UINT)windowW;
+				outH = (UINT)windowH;
+				return;
+			}
+			fprintf(stderr, "WARNING: Resolve_Present_BackBuffer_Size: window size %dx%d "
+				"disagrees with game orientation %dx%d — ignoring (likely caught mid-rotation)\n",
+				windowW, windowH, gameW, gameH);
 		}
 	}
 #endif
