@@ -112,6 +112,7 @@ public class SetupActivity extends Activity {
         addButton(root, "Launch Game", this::onLaunchGame);
         addButton(root, "Clear Game Folder Setting", this::onClearGameFolder);
 
+        buildInterfaceScaleSection(root);
         buildUiScaleSection(root);
 
         TextView help = new TextView(this);
@@ -144,6 +145,100 @@ public class SetupActivity extends Activity {
     // to wait for the game to visit its own Options menu first.
     private android.widget.SeekBar uiScaleSeekBar;
     private TextView uiScaleLabel;
+
+    // TheSuperHackers @feature Android port 08/07/2026 Whole-interface size.
+    // Writes "MobileUIScale" (percent) into the same Options.ini; SDL3Main.cpp
+    // reads it at launch and renders at native/scale, so buttons, controlbar
+    // AND text all get physically bigger (the pillarbox blit upscales to the
+    // full panel). Distinct from "Menu Text Size" below, which only scales
+    // fonts. Also drops any stale "Resolution" key, which would override the
+    // scaled resolution the game computes at startup.
+    private android.widget.SeekBar interfaceScaleSeekBar;
+    private TextView interfaceScaleLabel;
+
+    private static final int INTERFACE_SCALE_MIN = 100;
+    private static final int INTERFACE_SCALE_MAX = 175;
+
+    private void buildInterfaceScaleSection(LinearLayout root) {
+        TextView header = new TextView(this);
+        header.setText("Interface Size (whole UI)");
+        header.setTextSize(16);
+        header.setPadding(0, dp(8), 0, dp(4));
+        root.addView(header);
+
+        interfaceScaleLabel = new TextView(this);
+        root.addView(interfaceScaleLabel);
+
+        interfaceScaleSeekBar = new android.widget.SeekBar(this);
+        interfaceScaleSeekBar.setMax(INTERFACE_SCALE_MAX - INTERFACE_SCALE_MIN);
+        interfaceScaleSeekBar.setProgress(readInterfaceScalePercent() - INTERFACE_SCALE_MIN);
+        updateInterfaceScaleLabel(interfaceScaleSeekBar.getProgress() + INTERFACE_SCALE_MIN);
+        interfaceScaleSeekBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
+                updateInterfaceScaleLabel(progress + INTERFACE_SCALE_MIN);
+            }
+            @Override
+            public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
+            @Override
+            public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
+        });
+        root.addView(interfaceScaleSeekBar);
+
+        addButton(root, "Apply Interface Size", () -> {
+            writeInterfaceScalePercent(interfaceScaleSeekBar.getProgress() + INTERFACE_SCALE_MIN);
+            Toast.makeText(this, "Saved. Takes effect next time you launch the game.", Toast.LENGTH_LONG).show();
+        });
+
+        TextView scaleHelp = new TextView(this);
+        scaleHelp.setPadding(0, 0, 0, dp(8));
+        scaleHelp.setText(
+            "Makes the ENTIRE game interface bigger — buttons, control bar and "
+            + "text together — by rendering at a lower internal resolution and "
+            + "stretching to the full screen. 150% is the default; set 100% for "
+            + "the old 1:1 native rendering. Takes effect on the next launch."
+        );
+        root.addView(scaleHelp);
+    }
+
+    private void updateInterfaceScaleLabel(int percent) {
+        interfaceScaleLabel.setText("Size: " + percent + "%");
+    }
+
+    private int readInterfaceScalePercent() {
+        java.util.Map<String, String> prefs = readKeyValueFile(optionsIniFile());
+        String val = prefs.get("MobileUIScale");
+        if (val != null) {
+            try {
+                return Math.max(INTERFACE_SCALE_MIN,
+                    Math.min(INTERFACE_SCALE_MAX, Integer.parseInt(val.trim())));
+            } catch (NumberFormatException ignored) {
+                // Fall through to the port's default below.
+            }
+        }
+        // Must match ReadMobileUIScalePercent()'s absent-key default in
+        // SDL3Main.cpp so the slider shows what the game will actually use.
+        return 150;
+    }
+
+    private void writeInterfaceScalePercent(int percent) {
+        File file = optionsIniFile();
+
+        // Same DefaultOptions.ini seeding rationale as writeUiScalePercent().
+        java.util.LinkedHashMap<String, String> prefs;
+        if (!file.isFile()) {
+            prefs = new java.util.LinkedHashMap<>(readKeyValueFile(defaultOptionsIniFile()));
+        } else {
+            prefs = new java.util.LinkedHashMap<>(readKeyValueFile(file));
+        }
+        prefs.put("MobileUIScale", String.valueOf(percent));
+        // A stale Resolution key (written by an earlier session at another
+        // scale) overrides the scaled resolution SDL3Main computes — drop it;
+        // the game re-writes a consistent value when options are applied.
+        prefs.remove("Resolution");
+
+        writeKeyValueFile(file, prefs);
+    }
 
     private void buildUiScaleSection(LinearLayout root) {
         TextView header = new TextView(this);
@@ -230,6 +325,10 @@ public class SetupActivity extends Activity {
         }
         prefs.put("ResolutionFontAdjustment", String.valueOf(percent));
 
+        writeKeyValueFile(file, prefs);
+    }
+
+    private void writeKeyValueFile(File file, java.util.Map<String, String> prefs) {
         File parent = file.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             Toast.makeText(this, "Could not create Options.ini folder", Toast.LENGTH_LONG).show();

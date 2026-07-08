@@ -141,6 +141,12 @@ dxvk.logLevel = none
 # RTS camera angles smear terrain with plain trilinear; 16x anisotropic is the
 # single biggest perceived-sharpness win and free on modern mobile GPUs.
 d3d9.samplerAnisotropy = 16
+# Background memory defragmentation corrupted the allocation pool on a real
+# Adreno device (use-after-free crash in createAllocation; upstream has the
+# same class of workaround for Intel ANV, dxvk issue #4395). SDL3Main.cpp
+# also forces this via DXVK_CONFIG so existing installs with an older
+# dxvk.conf in their game folder are covered too.
+dxvk.enableMemoryDefrag = False
 EOF
 fi
 

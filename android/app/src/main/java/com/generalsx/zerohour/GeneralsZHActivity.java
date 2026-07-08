@@ -60,6 +60,21 @@ public class GeneralsZHActivity extends SDLActivity {
         };
     }
 
+    // TheSuperHackers @bugfix Android port 08/07/2026 THE reason the game kept
+    // rotating despite the manifest's screenOrientation="landscape" AND the
+    // setRequestedOrientation() call in onCreate(): SDL3's native window
+    // creation calls SDLActivity.setOrientation() over JNI, which lands here
+    // (setOrientationBis) and — for a non-resizable landscape window with no
+    // SDL_HINT_ORIENTATIONS hint — applies SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+    // silently overriding both earlier locks and re-enabling accelerometer
+    // rotation (including the 180° landscape flip the user kept seeing).
+    // SDL documents this method as "This can be overridden": pin it to the
+    // absolute landscape orientation unconditionally.
+    @Override
+    public void setOrientationBis(int w, int h, boolean resizable, String hint) {
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // TheSuperHackers @bugfix Android port 07/07/2026 Belt-and-suspenders

@@ -101,3 +101,29 @@ index 8c469f2..cbc30a0 100644
        for (auto& page : newPages)
          m_pages.push_back(std::move(page));
      }
+diff --git a/src/dxvk/dxvk_memory.h b/src/dxvk/dxvk_memory.h
+index c432df0..2c1ebc2 100644
+--- a/src/dxvk/dxvk_memory.h
++++ b/src/dxvk/dxvk_memory.h
+@@ -704,6 +704,21 @@ namespace dxvk {
+       if (unlikely(!m_next))
+         createPool();
+ 
++      // TheSuperHackers @bugfix Survive a corrupted free list instead of
++      // dereferencing a garbage next pointer. Real-device crash reports
++      // (Android/Adreno) showed the popped head holding a live allocation's
++      // counter words (e.g. 0x2000000001) — i.e. an allocation was recycled
++      // while still referenced and its user overwrote the embedded
++      // StorageList. Storage is alignas(DxvkResourceAllocation), so any
++      // misaligned head is definitely poisoned: log, abandon the poisoned
++      // chain (a bounded leak) and continue from a fresh pool page.
++      if (unlikely(reinterpret_cast<uintptr_t>(m_next) & (alignof(Storage) - 1u))) {
++        Logger::err(str::format("DxvkResourceAllocationPool: corrupted free list head ",
++          reinterpret_cast<void*>(m_next), ", abandoning chain"));
++        m_next = nullptr;
++        createPool();
++      }
++
+       StorageList* list = m_next;
+       m_next = list->next;
+       list->~StorageList();

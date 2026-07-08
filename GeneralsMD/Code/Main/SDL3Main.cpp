@@ -249,6 +249,112 @@ GameEngine *CreateGameEngine(void)
 	return engine;
 }
 
+#if defined(__ANDROID__)
+// GeneralsX @feature Android port 08/07/2026 Whole-interface scale for phone
+// screens. Font scaling alone (ResolutionFontAdjustment) only grows text;
+// button/controlbar GEOMETRY scales with the render resolution, which was
+// pinned 1:1 to the native panel (e.g. 2510x1156) — physically tiny UI.
+// Rendering at native/scale and letting the existing pillarbox blit stretch
+// to the panel makes everything (buttons, controlbar, text) bigger at once.
+// The percent lives in the same Options.ini the engine reads, under our own
+// "MobileUIScale" key, so the GeneralsZH Settings app can offer a slider.
+
+static void BuildAndroidOptionsIniPath(char *out, size_t outSize)
+{
+	const char *home = getenv("HOME");
+	if (home == nullptr) {
+		out[0] = '\0';
+		return;
+	}
+	snprintf(out, outSize, "%s/.local/share/GeneralsX/GeneralsZH/Options.ini", home);
+}
+
+// Percent, clamped to [100, 200]. Default when the key is absent is 150:
+// the port targets phone screens where the unscaled UI is unusably small,
+// and the Settings app slider can always bring it back to 100.
+static int ReadMobileUIScalePercent()
+{
+	int pct = 150;
+
+	char path[1024];
+	BuildAndroidOptionsIniPath(path, sizeof(path));
+	FILE *fp = path[0] ? fopen(path, "r") : nullptr;
+	if (fp != nullptr) {
+		char line[512];
+		while (fgets(line, sizeof(line), fp) != nullptr) {
+			int value = 0;
+			if (sscanf(line, " MobileUIScale = %d", &value) == 1) {
+				pct = value;
+				break;
+			}
+		}
+		fclose(fp);
+	}
+
+	if (pct < 100) pct = 100;
+	if (pct > 200) pct = 200;
+	return pct;
+}
+
+// Options.ini's "Resolution" key overrides our injected -xres/-yres
+// (OptionPreferences::getResolution is read after the command line), so a
+// stale value written by an earlier session at a different scale would
+// silently defeat the scale change. Drop the key when it disagrees with the
+// resolution we are about to inject; the in-game options apply will re-write
+// it with the then-current (already scaled) resolution, which is consistent.
+static void DropStaleOptionsIniResolution(int xres, int yres)
+{
+	char path[1024];
+	BuildAndroidOptionsIniPath(path, sizeof(path));
+	if (!path[0])
+		return;
+
+	FILE *in = fopen(path, "r");
+	if (in == nullptr)
+		return;
+
+	char lines[128][512];
+	int lineCount = 0;
+	bool dropped = false;
+	char keep[512];
+
+	while (fgets(keep, sizeof(keep), in) != nullptr) {
+		int w = 0, h = 0;
+		if (sscanf(keep, " Resolution = %d %d", &w, &h) == 2) {
+			if (w == xres && h == yres) {
+				fclose(in);
+				return;  // already consistent, leave the file alone
+			}
+			dropped = true;
+			fprintf(stderr, "INFO: dropping stale Options.ini Resolution %dx%d (scaled target is %dx%d)\n",
+			        w, h, xres, yres);
+			continue;
+		}
+		if (lineCount >= 128) {
+			// Unexpectedly large file: better to keep the stale key than to
+			// silently truncate the user's settings on rewrite.
+			fclose(in);
+			return;
+		}
+		strcpy(lines[lineCount++], keep);
+	}
+	fclose(in);
+
+	if (!dropped)
+		return;
+
+	char tmpPath[1060];
+	snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", path);
+	FILE *out = fopen(tmpPath, "w");
+	if (out == nullptr)
+		return;
+	for (int i = 0; i < lineCount; ++i)
+		fputs(lines[i], out);
+	fclose(out);
+	rename(tmpPath, path);
+}
+#endif // __ANDROID__
+
 /**
  * main
  *
@@ -468,6 +574,22 @@ int main(int argc, char* argv[])
 		// actually chasing (hundreds of MB/session); only genuine failures
 		// are rare enough not to reproduce that problem.
 		setenv("DXVK_LOG_LEVEL", "error", 0);
+
+		// GeneralsX @bugfix Android port 08/07/2026 Disable DXVK's background
+		// memory defragmentation. Two real-device crash reports (screen
+		// rotation in the lobby; unit creation mid-game) symbolized to
+		// DxvkMemoryAllocator::createAllocation popping a corrupted
+		// allocation-pool free-list head (fault_addr 0x2000000001 = a live
+		// allocation's counters written over the recycled node's next
+		// pointer) — a use-after-free consistent with the relocation/defrag
+		// path moving allocations behind the app's back. Upstream DXVK itself
+		// disables defrag on Intel ANV for "unknown reasons" breakage
+		// (dxvk_memory.cpp, issue #4395); this Adreno driver appears to be
+		// another such case. DXVK_CONFIG is parsed on top of dxvk.conf, so
+		// this reaches existing installs whose game folder already carries an
+		// older dxvk.conf. setenv(..., 0) keeps any user override in the
+		// actual environment intact.
+		setenv("DXVK_CONFIG", "dxvk.enableMemoryDefrag = False", 0);
 
 		const char *internalPath = SDL_GetAndroidInternalStoragePath();
 		const char *externalPath = SDL_GetAndroidExternalStoragePath();
@@ -716,11 +838,30 @@ int main(int argc, char* argv[])
 				static char xresVal[16], yresVal[16];
 				static char xresFlag[] = "-xres";
 				static char yresFlag[] = "-yres";
-				const int yres = winH;
+				int yres = winH;
 				int xres = winW;
+#if defined(__ANDROID__)
+				// Render at native/scale so the whole interface (buttons,
+				// controlbar, text) is physically larger; the pillarbox blit
+				// upscales to the full panel. See ReadMobileUIScalePercent().
+				{
+					const int uiScalePct = ReadMobileUIScalePercent();
+					yres = winH * 100 / uiScalePct;
+					if (yres < 600) yres = 600;   // engine UI layouts assume >= 600
+					if (yres > winH) yres = winH;
+					xres = (int)((long long)winW * yres / winH);  // keep the window aspect
+					fprintf(stderr, "INFO: MobileUIScale=%d%% -> internal resolution %dx%d\n",
+					        uiScalePct, xres & ~1, yres);
+				}
+#endif
 				xres &= ~1;  // keep it even
 				snprintf(xresVal, sizeof(xresVal), "%d", xres);
 				snprintf(yresVal, sizeof(yresVal), "%d", yres);
+#if defined(__ANDROID__)
+				// A stale Options.ini "Resolution" from a session at another
+				// scale would override the injected -xres/-yres — drop it.
+				DropStaleOptionsIniResolution(xres, yres);
+#endif
 
 				static char* newArgv[64];
 				int n = 0;
