@@ -70,6 +70,7 @@
             android:exported="true"
             android:label="GeneralsZH Settings"
             android:icon="@mipmap/ic_launcher_setup"
+            android:theme="@style/Theme.GeneralsZHSettings"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
@@ -81,11 +82,13 @@
         <activity
             android:name=".FolderPickerActivity"
             android:exported="false"
+            android:theme="@style/Theme.GeneralsZHSettings"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
             android:name=".LogViewerActivity"
             android:exported="false"
+            android:theme="@style/Theme.GeneralsZHSettings"
             android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>

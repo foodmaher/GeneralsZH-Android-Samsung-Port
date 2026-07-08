@@ -36,13 +36,15 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
-import android.view.Gravity;
-import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.Slider;
 
 import java.io.File;
 
@@ -87,39 +89,50 @@ public class SetupActivity extends Activity {
         refreshStatus();
     }
 
+    // GeneralsX @feature Android port 08/07/2026 Material redesign: each
+    // logical section lives in its own MaterialCardView instead of a flat
+    // wall of buttons/text on the raw window background.
     private void buildUi() {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(20);
+        int pad = dp(16);
         root.setPadding(pad, pad, pad, pad);
         scroll.addView(root);
         setContentView(scroll);
 
         TextView title = new TextView(this);
-        title.setText("Command & Conquer Generals: Zero Hour — Android Setup");
-        title.setTextSize(20);
-        title.setPadding(0, 0, 0, dp(16));
+        title.setText("Command & Conquer Generals: Zero Hour");
+        title.setTextSize(22);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        title.setPadding(dp(4), dp(8), dp(4), dp(4));
         root.addView(title);
 
+        TextView subtitle = new TextView(this);
+        subtitle.setText("Android Settings");
+        subtitle.setTextSize(14);
+        subtitle.setAlpha(0.7f);
+        subtitle.setPadding(dp(4), 0, dp(4), dp(16));
+        root.addView(subtitle);
+
+        LinearLayout statusCard = startCard(root, null);
         statusText = new TextView(this);
         statusText.setTextIsSelectable(true);
-        statusText.setPadding(0, 0, 0, dp(24));
-        root.addView(statusText);
+        statusCard.addView(statusText);
 
-        addButton(root, "Select Game Folder", this::onSelectGameFolder);
-        addButton(root, "View Logs", this::onViewLogs);
-        addButton(root, "Launch Game", this::onLaunchGame);
-        addButton(root, "Clear Game Folder Setting", this::onClearGameFolder);
+        LinearLayout actionsCard = startCard(root, "Game Folder");
+        addButton(actionsCard, "Select Game Folder", this::onSelectGameFolder);
+        addButton(actionsCard, "Launch Game", this::onLaunchGame);
+        addButton(actionsCard, "View Logs", this::onViewLogs);
+        addButton(actionsCard, "Clear Game Folder Setting", this::onClearGameFolder);
 
-        buildInterfaceScaleSection(root);
         buildUiScaleSection(root);
+        buildBackButtonSection(root);
 
+        LinearLayout helpCard = startCard(root, "How this works");
         TextView help = new TextView(this);
-        help.setPadding(0, dp(24), 0, 0);
         help.setText(
-            "How this works:\n\n"
-            + "1. \"Select Game Folder\" opens a folder browser on your phone's "
+            "1. \"Select Game Folder\" opens a folder browser on your phone's "
             + "storage. Navigate to wherever you copied your own Command & Conquer "
             + "Generals Zero Hour install (the folder containing INIZH.big, Data\\, "
             + "ZH_Generals\\, etc.) and tap \"Use This Folder\".\n\n"
@@ -131,7 +144,37 @@ public class SetupActivity extends Activity {
             + "there to send the log to yourself.\n\n"
             + "4. \"Launch Game\" starts the game with the folder you picked."
         );
-        root.addView(help);
+        helpCard.addView(help);
+    }
+
+    // Creates a MaterialCardView appended to `root`, with an optional bold
+    // header line, and returns its inner vertical content LinearLayout so
+    // callers can just addView() into it like before.
+    private LinearLayout startCard(LinearLayout root, String header) {
+        MaterialCardView card = new MaterialCardView(this);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.setMargins(0, 0, 0, dp(12));
+        card.setLayoutParams(cardLp);
+        card.setRadius(dp(12));
+        card.setCardElevation(dp(2));
+        card.setCardBackgroundColor(getColor(R.color.gzh_surface));
+        card.setContentPadding(dp(16), dp(14), dp(16), dp(14));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        card.addView(content);
+        root.addView(card);
+
+        if (header != null) {
+            TextView headerView = new TextView(this);
+            headerView.setText(header);
+            headerView.setTextSize(15);
+            headerView.setTypeface(headerView.getTypeface(), android.graphics.Typeface.BOLD);
+            headerView.setPadding(0, 0, 0, dp(8));
+            content.addView(headerView);
+        }
+        return content;
     }
 
     // TheSuperHackers @feature Android port 07/07/2026 Menu text size scaling
@@ -143,146 +186,103 @@ public class SetupActivity extends Activity {
     // actually reads (see SDL3Main.cpp: HOME=<internal storage>, so the file
     // is <filesDir>/.local/share/GeneralsX/GeneralsZH/Options.ini) -- no need
     // to wait for the game to visit its own Options menu first.
-    private android.widget.SeekBar uiScaleSeekBar;
+    private Slider uiScaleSlider;
     private TextView uiScaleLabel;
 
-    // TheSuperHackers @feature Android port 08/07/2026 Whole-interface size.
-    // Writes "MobileUIScale" (percent) into the same Options.ini; SDL3Main.cpp
-    // reads it at launch and renders at native/scale, so buttons, controlbar
-    // AND text all get physically bigger (the pillarbox blit upscales to the
-    // full panel). Distinct from "Menu Text Size" below, which only scales
-    // fonts. Also drops any stale "Resolution" key, which would override the
-    // scaled resolution the game computes at startup.
-    private android.widget.SeekBar interfaceScaleSeekBar;
-    private TextView interfaceScaleLabel;
+    // GeneralsX @bugfix Android port 08/07/2026 A prior "Interface Size (whole
+    // UI)" option here rendered at a reduced internal resolution and let the
+    // pillarbox blit upscale to the full panel, expecting buttons/controlbar
+    // to grow along with text. On real devices only text actually changed
+    // size — widget layout geometry is itself computed as a ratio of the
+    // current resolution, so shrinking that resolution and then stretching
+    // the result back up is a no-op for anything but text (whose *requested
+    // font point size* is a genuinely bigger asset, not just a stretched
+    // rect). Removed rather than ship a slider that visibly does nothing;
+    // "Menu Text Size" below is the one scaling option that actually works.
 
-    private static final int INTERFACE_SCALE_MIN = 100;
-    private static final int INTERFACE_SCALE_MAX = 175;
+    private void buildUiScaleSection(LinearLayout root) {
+        LinearLayout content = startCard(root, "Menu Text Size");
 
-    private void buildInterfaceScaleSection(LinearLayout root) {
-        TextView header = new TextView(this);
-        header.setText("Interface Size (whole UI)");
-        header.setTextSize(16);
-        header.setPadding(0, dp(8), 0, dp(4));
-        root.addView(header);
+        uiScaleLabel = new TextView(this);
+        content.addView(uiScaleLabel);
 
-        interfaceScaleLabel = new TextView(this);
-        root.addView(interfaceScaleLabel);
+        int startPercent = readUiScalePercent();
+        uiScaleSlider = new Slider(this);
+        uiScaleSlider.setValueFrom(0f);
+        uiScaleSlider.setValueTo(150f);
+        uiScaleSlider.setStepSize(1f);
+        uiScaleSlider.setValue(startPercent);
+        updateUiScaleLabel(startPercent);
+        uiScaleSlider.addOnChangeListener((slider, value, fromUser) -> updateUiScaleLabel((int) value));
+        content.addView(uiScaleSlider);
 
-        interfaceScaleSeekBar = new android.widget.SeekBar(this);
-        interfaceScaleSeekBar.setMax(INTERFACE_SCALE_MAX - INTERFACE_SCALE_MIN);
-        interfaceScaleSeekBar.setProgress(readInterfaceScalePercent() - INTERFACE_SCALE_MIN);
-        updateInterfaceScaleLabel(interfaceScaleSeekBar.getProgress() + INTERFACE_SCALE_MIN);
-        interfaceScaleSeekBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
-                updateInterfaceScaleLabel(progress + INTERFACE_SCALE_MIN);
-            }
-            @Override
-            public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
-            @Override
-            public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
-        });
-        root.addView(interfaceScaleSeekBar);
-
-        addButton(root, "Apply Interface Size", () -> {
-            writeInterfaceScalePercent(interfaceScaleSeekBar.getProgress() + INTERFACE_SCALE_MIN);
+        addButton(content, "Apply Menu Text Size", () -> {
+            writeUiScalePercent((int) uiScaleSlider.getValue());
             Toast.makeText(this, "Saved. Takes effect next time you launch the game.", Toast.LENGTH_LONG).show();
         });
 
-        TextView scaleHelp = new TextView(this);
-        scaleHelp.setPadding(0, 0, 0, dp(8));
-        scaleHelp.setText(
-            "Makes the ENTIRE game interface bigger — buttons, control bar and "
-            + "text together — by rendering at a lower internal resolution and "
-            + "stretching to the full screen. 150% is the default; set 100% for "
-            + "the old 1:1 native rendering. Takes effect on the next launch."
+        TextView uiScaleHelp = new TextView(this);
+        uiScaleHelp.setAlpha(0.8f);
+        uiScaleHelp.setText(
+            "Scales most menu button/label text for the screen resolution. 70 is "
+            + "the game's own default; higher values make menu text bigger. Takes "
+            + "effect the next time you launch the game, not live."
         );
-        root.addView(scaleHelp);
+        content.addView(uiScaleHelp);
     }
 
-    private void updateInterfaceScaleLabel(int percent) {
-        interfaceScaleLabel.setText("Size: " + percent + "%");
+    private void updateUiScaleLabel(int percent) {
+        uiScaleLabel.setText("Scale: " + percent + "%");
     }
 
-    private int readInterfaceScalePercent() {
+    // GeneralsX @feature Android port 08/07/2026 Phone Back button/gesture
+    // customization. Writes "BackButtonKey" (ESC or NONE) into Options.ini;
+    // SDL3Keyboard.cpp reads it once at init and uses it whenever it sees
+    // SDL_SCANCODE_AC_BACK. Default ON (Esc / opens the pause menu) — before
+    // this fix, Back fell through a scancode-truncation bug and could
+    // misfire as an unrelated in-game hotkey combo instead of doing anything
+    // sane.
+    private MaterialSwitch backButtonSwitch;
+
+    private void buildBackButtonSection(LinearLayout root) {
+        LinearLayout content = startCard(root, "Phone Back Button");
+
+        backButtonSwitch = new MaterialSwitch(this);
+        backButtonSwitch.setText("Open the in-game pause menu");
+        backButtonSwitch.setChecked(readBackButtonOpensMenu());
+        content.addView(backButtonSwitch);
+
+        addButton(content, "Apply Back Button Setting", () -> {
+            writeBackButtonOpensMenu(backButtonSwitch.isChecked());
+            Toast.makeText(this, "Saved. Takes effect next time you launch the game.", Toast.LENGTH_LONG).show();
+        });
+
+        TextView help = new TextView(this);
+        help.setAlpha(0.8f);
+        help.setText(
+            "When ON (default), pressing the phone's Back button/gesture during a "
+            + "match opens Save/Load, Options, Restart, Exit. When OFF, Back does "
+            + "nothing in-game and Android's own default Back handling applies."
+        );
+        content.addView(help);
+    }
+
+    private boolean readBackButtonOpensMenu() {
         java.util.Map<String, String> prefs = readKeyValueFile(optionsIniFile());
-        String val = prefs.get("MobileUIScale");
-        if (val != null) {
-            try {
-                return Math.max(INTERFACE_SCALE_MIN,
-                    Math.min(INTERFACE_SCALE_MAX, Integer.parseInt(val.trim())));
-            } catch (NumberFormatException ignored) {
-                // Fall through to the port's default below.
-            }
-        }
-        // Must match ReadMobileUIScalePercent()'s absent-key default in
-        // SDL3Main.cpp so the slider shows what the game will actually use.
-        return 150;
+        String val = prefs.get("BackButtonKey");
+        return val == null || !val.trim().equalsIgnoreCase("NONE");
     }
 
-    private void writeInterfaceScalePercent(int percent) {
+    private void writeBackButtonOpensMenu(boolean opensMenu) {
         File file = optionsIniFile();
-
-        // Same DefaultOptions.ini seeding rationale as writeUiScalePercent().
         java.util.LinkedHashMap<String, String> prefs;
         if (!file.isFile()) {
             prefs = new java.util.LinkedHashMap<>(readKeyValueFile(defaultOptionsIniFile()));
         } else {
             prefs = new java.util.LinkedHashMap<>(readKeyValueFile(file));
         }
-        prefs.put("MobileUIScale", String.valueOf(percent));
-        // A stale Resolution key (written by an earlier session at another
-        // scale) overrides the scaled resolution SDL3Main computes — drop it;
-        // the game re-writes a consistent value when options are applied.
-        prefs.remove("Resolution");
-
+        prefs.put("BackButtonKey", opensMenu ? "ESC" : "NONE");
         writeKeyValueFile(file, prefs);
-    }
-
-    private void buildUiScaleSection(LinearLayout root) {
-        TextView header = new TextView(this);
-        header.setText("Menu Text Size");
-        header.setTextSize(16);
-        header.setPadding(0, dp(8), 0, dp(4));
-        root.addView(header);
-
-        uiScaleLabel = new TextView(this);
-        root.addView(uiScaleLabel);
-
-        uiScaleSeekBar = new android.widget.SeekBar(this);
-        uiScaleSeekBar.setMax(150);
-        uiScaleSeekBar.setProgress(readUiScalePercent());
-        updateUiScaleLabel(uiScaleSeekBar.getProgress());
-        uiScaleSeekBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
-                updateUiScaleLabel(progress);
-            }
-            @Override
-            public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
-            @Override
-            public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
-        });
-        root.addView(uiScaleSeekBar);
-
-        addButton(root, "Apply Menu Text Size", () -> {
-            writeUiScalePercent(uiScaleSeekBar.getProgress());
-            Toast.makeText(this, "Saved. Takes effect next time you launch the game.", Toast.LENGTH_LONG).show();
-        });
-
-        TextView uiScaleHelp = new TextView(this);
-        uiScaleHelp.setPadding(0, 0, 0, dp(8));
-        uiScaleHelp.setText(
-            "Scales most menu button/label text for the screen resolution. 70 is "
-            + "the game's own default; higher values make menu text bigger. Takes "
-            + "effect the next time you launch the game, not live."
-        );
-        root.addView(uiScaleHelp);
-    }
-
-    private void updateUiScaleLabel(int percent) {
-        uiScaleLabel.setText("Scale: " + percent + "%");
     }
 
     private File optionsIniFile() {
@@ -370,12 +370,12 @@ public class SetupActivity extends Activity {
     }
 
     private void addButton(LinearLayout root, String label, Runnable action) {
-        Button b = new Button(this);
+        MaterialButton b = new MaterialButton(this);
         b.setText(label);
         b.setOnClickListener(v -> action.run());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, dp(12));
+        lp.setMargins(0, dp(4), 0, dp(4));
         root.addView(b, lp);
     }
 

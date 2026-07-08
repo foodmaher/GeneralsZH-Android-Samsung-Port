@@ -67,7 +67,12 @@ public:
 
 protected:
 	virtual void getKey(KeyboardIO *key);  // GeneralsX @build fbraz 12/02/2026 BenderAI - Get keyboard event
-	virtual KeyVal translateScanCodeToKeyVal(unsigned char scan);
+	// GeneralsX @bugfix Android port 08/07/2026 SDL_Scancode values for the "app
+	// control" keys (AC_BACK, AC_HOME, ...) are all > 255; this used to take
+	// `unsigned char` and silently truncate them into whatever mapped key that
+	// low byte happened to collide with (the phone Back button/gesture was
+	// firing a phantom modifier+click combo instead of doing anything sane).
+	virtual KeyVal translateScanCodeToKeyVal(SDL_Scancode scan);
 
 private:
 	void translateKeyEvent(const SDL_KeyboardEvent& event);
@@ -80,6 +85,11 @@ private:
 	SDL_Event m_eventBuffer[MAX_SDL3_KEY_EVENTS];
 	UnsignedInt m_nextFreeIndex;  // Write position
 	UnsignedInt m_nextGetIndex;   // Read position
+
+	// GeneralsX @feature Android port 08/07/2026 User-configurable phone Back
+	// button/gesture action (Options.ini "BackButtonKey": ESC or NONE), set by
+	// the GeneralsZH Settings app. Read once in init().
+	KeyVal m_backButtonKey;
 };
 
 #endif // !_WIN32

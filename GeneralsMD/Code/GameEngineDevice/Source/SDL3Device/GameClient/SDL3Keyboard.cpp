@@ -30,7 +30,46 @@
 // GeneralsX @bugfix BenderAI 13/02/2026 Fix include path (fighter19 pattern)
 #include "SDL3Device/GameClient/SDL3Keyboard.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#if defined(__ANDROID__)
+// GeneralsX @feature Android port 08/07/2026 Let the GeneralsZH Settings app
+// choose what the phone's Back button/gesture (SDL_SCANCODE_AC_BACK) does:
+// "ESC" (default - opens the in-game pause menu) or "NONE" (ignored, so
+// Android's own default Back handling - e.g. leaving the app - applies).
+// Shares the same Options.ini and key=value format as MobileUIScale/
+// ResolutionFontAdjustment (see SDL3Main.cpp).
+static KeyVal ReadBackButtonKey()
+{
+	const char *home = getenv("HOME");
+	if (home == nullptr) {
+		return KEY_ESC;
+	}
+
+	char path[1024];
+	snprintf(path, sizeof(path), "%s/.local/share/GeneralsX/GeneralsZH/Options.ini", home);
+
+	FILE *fp = fopen(path, "r");
+	if (fp == nullptr) {
+		return KEY_ESC;
+	}
+
+	KeyVal result = KEY_ESC;
+	char line[512];
+	while (fgets(line, sizeof(line), fp) != nullptr) {
+		char value[64];
+		if (sscanf(line, " BackButtonKey = %63s", value) == 1) {
+			if (strcmp(value, "NONE") == 0) {
+				result = KEY_NONE;
+			}
+			break;
+		}
+	}
+	fclose(fp);
+	return result;
+}
+#endif  // __ANDROID__
 
 /**
  * Constructor
@@ -38,7 +77,8 @@
 SDL3Keyboard::SDL3Keyboard(void)
 	: Keyboard(),
 	  m_nextFreeIndex(0),
-	  m_nextGetIndex(0)
+	  m_nextGetIndex(0),
+	  m_backButtonKey(KEY_ESC)
 {
 	// Initialize event buffer with SDL_EVENT_FIRST sentinel
 	// GeneralsX @refactor felipebraz 16/02/2026 Fighter19 pattern
@@ -69,7 +109,11 @@ void SDL3Keyboard::init(void)
 	memset(m_eventBuffer, 0, sizeof(m_eventBuffer));
 	m_nextFreeIndex = 0;
 	m_nextGetIndex = 0;
-	
+
+#if defined(__ANDROID__)
+	m_backButtonKey = ReadBackButtonKey();
+#endif
+
 	// init complete
 }
 
@@ -238,15 +282,18 @@ void SDL3Keyboard::addSDL3KeyEvent(const SDL_KeyboardEvent& event)
  * Translate SDL3 scancode to game KeyDefType
  * For Phase 1.5, minimal mapping - full mapping in Phase 2
  */
-KeyVal SDL3Keyboard::translateScanCodeToKeyVal(unsigned char scan)
+KeyVal SDL3Keyboard::translateScanCodeToKeyVal(SDL_Scancode scan)
 {
 	// TODO: Phase 2 - Complete SDL_Scancode → KeyDefType mapping
 	// For now, return KEY_NONE (parent class will handle)
-	
+
 	// Quick mapping for essential keys
 	// GeneralsX @bugfix felipebraz 01/04/2026 Restore editing/navigation keys required by GUI widgets.
-	switch ((SDL_Scancode)scan) {
+	switch (scan) {
 		case SDL_SCANCODE_ESCAPE: return KEY_ESC;      // GeneralsX @bugfix BenderAI 13/02/2026 Fix key constant name
+		// GeneralsX @bugfix Android port 08/07/2026 Phone Back button/gesture;
+		// user-configurable via the Settings app (see ReadBackButtonKey() above).
+		case SDL_SCANCODE_AC_BACK: return m_backButtonKey;
 		case SDL_SCANCODE_RETURN: return KEY_ENTER;    // GeneralsX @bugfix BenderAI 13/02/2026 Fix key constant name
 		case SDL_SCANCODE_KP_ENTER: return KEY_KPENTER;
 		case SDL_SCANCODE_SPACE: return KEY_SPACE;

@@ -44,6 +44,14 @@ on:
         options:
           - android-vulkan
         default: android-vulkan
+      version_name:
+        type: string
+        description: "Override versionName (e.g. 1.2.0). Leave blank to use the committed default (android/app/build.gradle)."
+        default: ""
+      version_code:
+        type: string
+        description: "Override versionCode (must be higher than any build already installed on your device). Leave blank to use the committed default."
+        default: ""
 
 jobs:
   build-android:
@@ -284,22 +292,28 @@ jobs:
       - name: Set artifact version
         id: artifact
         run: |
-          # versionCode must strictly increase for a tapped-APK update install
-          # to be accepted (adb install -r doesn't care, but that's not how
-          # a phone user updates a sideloaded app); the workflow run number is
-          # monotonic per-repository, which is good enough for that purpose.
-          echo "version_code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "apk_name=GeneralsXZH-android-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+          # GeneralsX @feature Android port 08/07/2026 Version numbers are
+          # manually managed (android/app/build.gradle), not auto-bumped from
+          # the workflow run number anymore. A manual "Run workflow" dispatch
+          # can still override them for a one-off build via the version_name /
+          # version_code inputs above; a normal push build passes neither, so
+          # Gradle falls back to whatever is committed in build.gradle.
+          echo "version_code=${{ inputs.version_code || '' }}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${{ inputs.version_name || '' }}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=GeneralsXZH-android-run${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Package APK
         env:
           # scripts/build/android/package-android-zh.sh uses these to stage
-          # jniLibs/, the SDL3 Java glue, and fonts, then invokes Gradle with
-          # this versionCode. Same fixed debug.keystore every run (committed
-          # in android/app/) is what makes consecutive CI builds installable
-          # as updates over each other rather than requiring an uninstall.
+          # jniLibs/, the SDL3 Java glue, and fonts, then invokes Gradle. Same
+          # fixed debug.keystore every run (committed in android/app/) is what
+          # makes consecutive CI builds installable as updates over each other
+          # rather than requiring an uninstall, PROVIDED versionCode was bumped
+          # by hand (in build.gradle or via a manual-dispatch override) since
+          # the last build the user actually installed.
           GX_ANDROID_STAGING: ${{ github.workspace }}/android-staging
           GX_ANDROID_VERSION_CODE: ${{ steps.artifact.outputs.version_code }}
+          GX_ANDROID_VERSION_NAME: ${{ steps.artifact.outputs.version_name }}
         run: |
           ./scripts/build/android/package-android-zh.sh
 
