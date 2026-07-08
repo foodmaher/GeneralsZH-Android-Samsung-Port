@@ -85,11 +85,6 @@ private:
 	SDL_Event m_eventBuffer[MAX_SDL3_KEY_EVENTS];
 	UnsignedInt m_nextFreeIndex;  // Write position
 	UnsignedInt m_nextGetIndex;   // Read position
-
-	// GeneralsX @feature Android port 08/07/2026 User-configurable phone Back
-	// button/gesture action (Options.ini "BackButtonKey": ESC or NONE), set by
-	// the GeneralsZH Settings app. Read once in init().
-	KeyVal m_backButtonKey;
 };
 
 #endif // !_WIN32

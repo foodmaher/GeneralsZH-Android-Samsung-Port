@@ -44,7 +44,6 @@ import android.widget.Toast;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.slider.Slider;
-import com.google.android.material.switchmaterial.SwitchMaterial;
 
 import java.io.File;
 
@@ -161,7 +160,6 @@ public class SetupActivity extends Activity {
         addButton(actionsCard, "Clear Game Folder Setting", this::onClearGameFolder);
 
         buildUiScaleSection(root);
-        buildBackButtonSection(root);
 
         LinearLayout helpCard = startCard(root, "How this works");
         TextView help = new TextView(this);
@@ -267,56 +265,6 @@ public class SetupActivity extends Activity {
 
     private void updateUiScaleLabel(int percent) {
         uiScaleLabel.setText("Scale: " + percent + "%");
-    }
-
-    // GeneralsX @feature Android port 08/07/2026 Phone Back button/gesture
-    // customization. Writes "BackButtonKey" (ESC or NONE) into Options.ini;
-    // SDL3Keyboard.cpp reads it once at init and uses it whenever it sees
-    // SDL_SCANCODE_AC_BACK. Default ON (Esc / opens the pause menu) — before
-    // this fix, Back fell through a scancode-truncation bug and could
-    // misfire as an unrelated in-game hotkey combo instead of doing anything
-    // sane.
-    private SwitchMaterial backButtonSwitch;
-
-    private void buildBackButtonSection(LinearLayout root) {
-        LinearLayout content = startCard(root, "Phone Back Button");
-
-        backButtonSwitch = new SwitchMaterial(this);
-        backButtonSwitch.setText("Open the in-game pause menu");
-        backButtonSwitch.setChecked(readBackButtonOpensMenu());
-        content.addView(backButtonSwitch);
-
-        addButton(content, "Apply Back Button Setting", () -> {
-            writeBackButtonOpensMenu(backButtonSwitch.isChecked());
-            Toast.makeText(this, "Saved. Takes effect next time you launch the game.", Toast.LENGTH_LONG).show();
-        });
-
-        TextView help = new TextView(this);
-        help.setAlpha(0.8f);
-        help.setText(
-            "When ON (default), pressing the phone's Back button/gesture during a "
-            + "match opens Save/Load, Options, Restart, Exit. When OFF, Back does "
-            + "nothing in-game and Android's own default Back handling applies."
-        );
-        content.addView(help);
-    }
-
-    private boolean readBackButtonOpensMenu() {
-        java.util.Map<String, String> prefs = readKeyValueFile(optionsIniFile());
-        String val = prefs.get("BackButtonKey");
-        return val == null || !val.trim().equalsIgnoreCase("NONE");
-    }
-
-    private void writeBackButtonOpensMenu(boolean opensMenu) {
-        File file = optionsIniFile();
-        java.util.LinkedHashMap<String, String> prefs;
-        if (!file.isFile()) {
-            prefs = new java.util.LinkedHashMap<>(readKeyValueFile(defaultOptionsIniFile()));
-        } else {
-            prefs = new java.util.LinkedHashMap<>(readKeyValueFile(file));
-        }
-        prefs.put("BackButtonKey", opensMenu ? "ESC" : "NONE");
-        writeKeyValueFile(file, prefs);
     }
 
     private File optionsIniFile() {
