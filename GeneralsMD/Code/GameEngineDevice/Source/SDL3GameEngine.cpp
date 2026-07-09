@@ -251,6 +251,18 @@ const float ZOOM_RATIO_MAX = 0.28f;       // less-active/more-active displacemen
 const float ZOOM_VERTICAL_BIAS = 1.5f;    // mover's |dy| must exceed |dx| by this factor to count as "vertical"
 const float ZOOM_PX_PER_TICK = 40.0f;     // vertical pixels of mover movement per zoom step (wheel tick)
 
+// GeneralsX @bugfix Android port 08/07/2026 The ratio check alone still let a
+// genuine two-hand vertical PAN misfire as zoom whenever the two hands
+// (naturally) didn't travel identical distances -- e.g. one hand moving
+// 60px and the other 15px in the SAME direction satisfied ZOOM_RATIO_MAX,
+// even though both were clearly cooperating on one vertical scroll rather
+// than one holding still. Reject zoom whenever the "anchor" moved enough to
+// rule out pure jitter AND its direction lines up with the mover's --
+// incidental hand tremor has no consistent direction; a real (if smaller)
+// pan contribution points the same way as the other finger.
+const float CODIRECTIONAL_MIN_PX = 10.0f;      // below this, the anchor's movement is too small for direction to mean anything
+const float CODIRECTIONAL_COS_THRESHOLD = 0.5f; // cosine similarity (~60 degrees) counts as "same direction" -> reject zoom, it's a pan
+
 void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
                         float x, float y, Uint8 button = 0, float wheelY = 0.0f, Uint8 clicks = 1)
 {
@@ -402,6 +414,8 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 				const float moverDelta = finger1IsAnchor ? delta2 : delta1;
 				const float moverDX = finger1IsAnchor ? d2x : d1x;
 				const float moverDY = finger1IsAnchor ? d2y : d1y;
+				const float anchorDX = finger1IsAnchor ? d1x : d2x;
+				const float anchorDY = finger1IsAnchor ? d1y : d2y;
 				// Ratio, not an absolute cap: a real two-hand pan keeps both
 				// fingers' displacement comparable (ratio near 1) no matter how
 				// far it's gone, while a deliberate hold-one-drag-the-other
@@ -410,7 +424,25 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 				const float ratio = anchorDelta / moverDelta;
 				const bool mostlyVertical = SDL_fabsf(moverDY) > SDL_fabsf(moverDX) * ZOOM_VERTICAL_BIAS;
 
-				if (ratio <= ZOOM_RATIO_MAX && mostlyVertical) {
+				// GeneralsX @bugfix Android port 08/07/2026 The ratio alone still
+				// misfired as zoom during a genuine two-hand vertical PAN: two
+				// hands rarely travel the exact same distance, so the
+				// less-active one could satisfy ZOOM_RATIO_MAX purely from
+				// moving noticeably less, even though it was clearly moving in
+				// the SAME direction as the other (i.e. both hands cooperating
+				// on one vertical scroll, not one holding still). A true anchor
+				// finger's small movement is incidental hand tremor with no
+				// consistent direction; a real (if smaller) pan contribution
+				// points the same way as the other finger. Reject zoom whenever
+				// the "anchor" moved enough (past pure jitter) AND that
+				// movement is directionally aligned with the mover's.
+				bool anchorCoDirectional = false;
+				if (anchorDelta >= CODIRECTIONAL_MIN_PX) {
+					const float cosSim = (anchorDX * moverDX + anchorDY * moverDY) / (anchorDelta * moverDelta);
+					anchorCoDirectional = cosSim >= CODIRECTIONAL_COS_THRESHOLD;
+				}
+
+				if (!anchorCoDirectional && ratio <= ZOOM_RATIO_MAX && mostlyVertical) {
 					s_touch.zoomFinger1IsMover = !finger1IsAnchor;
 					s_touch.zoomTickBaselineY = s_touch.zoomFinger1IsMover ? f1py : f2py;
 					s_touch.phase = TouchState::ZOOM;
