@@ -1,6 +1,6 @@
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
-#include "../NGMP_include.h"
-#include "../OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 
 HTTPManager::HTTPManager() noexcept
 {

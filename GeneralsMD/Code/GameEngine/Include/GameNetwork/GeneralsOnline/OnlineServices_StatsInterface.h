@@ -1,7 +1,6 @@
 #pragma once
 
 #include "NGMP_include.h"
-#include "NetworkMesh.h"
 #include "GameNetwork/RankPointValue.h"
 #include "GameNetwork/GameSpy/PersistentStorageThread.h"
 

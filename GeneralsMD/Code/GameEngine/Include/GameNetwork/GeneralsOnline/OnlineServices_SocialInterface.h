@@ -1,7 +1,6 @@
 #pragma once
 
 #include "NGMP_include.h"
-#include "NetworkMesh.h"
 #include "GameNetwork/RankPointValue.h"
 #include "GameNetwork/GameSpy/PersistentStorageThread.h"
 
@@ -99,7 +98,7 @@ public:
     {
 		// is it stale? clear it out
 		const int64_t recentPlayersListLifespan = 600000; // 10 minutes
-		int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+		int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		if (currTime - m_RecentlyPlayedWithTimestamp >= recentPlayersListLifespan)
 		{
 			m_mapRecentlyPlayedWith.clear();

@@ -11,7 +11,7 @@
 #include "GameNetwork/NetworkInterface.h"
 #include "Common/GlobalData.h"
 #include "GameClient/View.h"
-#include "../NextGenMP_defines.h"
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
 
 NGMPGameSlot::NGMPGameSlot()
 {
@@ -555,8 +555,8 @@ void NGMPGame::reset(void)
 void NGMPGame::StartCountdown()
 {
 	m_bCountdownStarted = true;
-	m_countdownStartTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
-	m_countdownLastCheckTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+	m_countdownStartTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	m_countdownLastCheckTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 	std::shared_ptr<WebSocket>  pWS = NGMP_OnlineServicesManager::GetWebSocket();
 	if (pWS != nullptr)

@@ -2,8 +2,8 @@
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/GameSpy/PersistentStorageThread.h"
 #include "GameNetwork/RankPointValue.h"
-#include "../OnlineServices_Init.h"
-#include "../HTTP/HTTPManager.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
 
 #include "Common/PlayerTemplate.h"
 #include "GameNetwork/GameSpy/LadderDefs.h"
@@ -116,7 +116,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByID(int64_t userID, std
 			}
 			else
 			{
-				int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+				int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 				int64_t lastCacheTime = m_mapStatsLastRefresh[userID];
 
 				if ((currTime - lastCacheTime) >= m_cacheTTL)
@@ -209,7 +209,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByID(int64_t userID, std
 
 							NetworkLog(ELogVerbosity::LOG_DEBUG, "Cached stats for user %lld", userID);
 							m_mapCachedStats[userID] = stats;
-							m_mapStatsLastRefresh[userID] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+							m_mapStatsLastRefresh[userID] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 							// cb
 							cb(true, stats);
@@ -341,7 +341,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByBatch(std::vector<int6
 
 							NetworkLog(ELogVerbosity::LOG_DEBUG, "Cached stats for user %d", stats.id);
 							m_mapCachedStats[stats.id] = stats;
-							m_mapStatsLastRefresh[stats.id] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+							m_mapStatsLastRefresh[stats.id] = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 						}
 						catch (nlohmann::json::exception& jsonException)
 						{

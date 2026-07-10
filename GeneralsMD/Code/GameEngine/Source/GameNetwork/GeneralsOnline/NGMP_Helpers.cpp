@@ -4,8 +4,8 @@
 #include <string>
 #include <locale>
 #include <codecvt>
-#include "../OnlineServices_Init.h"
-#include "../OnlineServices_Auth.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Auth.h"
 
 std::string m_strNetworkLogFileName;
 std::mutex m_logMutex;

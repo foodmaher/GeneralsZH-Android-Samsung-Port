@@ -10,7 +10,7 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #endif
-#include "../NGMP_include.h"
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
 
 enum class EHTTPVerb
 {

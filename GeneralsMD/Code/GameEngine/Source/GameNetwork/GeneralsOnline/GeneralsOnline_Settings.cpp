@@ -1,7 +1,7 @@
 #include "GameNetwork/GeneralsOnline/GeneralsOnline_Settings.h"
-#include "../json.hpp"
-#include "../OnlineServices_LobbyInterface.h"
-#include "../OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/json.hpp"
+#include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 
 #define SETTINGS_KEY_CAMERA "camera"
 #define SETTINGS_KEY_CAMERA_MIN_HEIGHT "min_height"

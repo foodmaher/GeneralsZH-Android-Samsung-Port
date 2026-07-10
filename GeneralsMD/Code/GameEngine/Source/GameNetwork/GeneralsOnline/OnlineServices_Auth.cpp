@@ -225,7 +225,7 @@ void NGMP_OnlineServices_AuthInterface::BeginLogin()
 	else
 	{
 		m_bWaitingLogin = true;
-		m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+		m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 		m_strCode = GenerateGamecode();
 
@@ -287,7 +287,7 @@ void NGMP_OnlineServices_AuthInterface::DoReAuth()
 
 	// do normal login flow, token is bad or expired etc
 	m_bWaitingLogin = true;
-	m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+	m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 	m_strCode = GenerateGamecode();
 
 #if defined(USE_TEST_ENV)
@@ -309,11 +309,11 @@ void NGMP_OnlineServices_AuthInterface::Tick()
 	if (m_bWaitingLogin)
 	{
 		const int64_t timeBetweenChecks = 1000;
-		int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+		int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 		if (currTime - m_lastCheckCode >= timeBetweenChecks)
 		{
-			m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::utc_clock::now().time_since_epoch()).count();
+			m_lastCheckCode = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 			// check again
 			std::string strURI = NGMP_OnlineServicesManager::GetAPIEndpoint("CheckLogin");

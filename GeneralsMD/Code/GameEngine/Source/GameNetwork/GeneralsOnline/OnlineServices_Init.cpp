@@ -1,6 +1,6 @@
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
-#include "../json.hpp"
+#include "GameNetwork/GeneralsOnline/json.hpp"
 #include "GameClient/MessageBox.h"
 #include "Common/FileSystem.h"
 #include "Common/file.h"
