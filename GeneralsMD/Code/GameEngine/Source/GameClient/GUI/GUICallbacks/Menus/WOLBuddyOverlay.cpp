@@ -498,6 +498,22 @@ void updateBuddyInfo()
 	GadgetListBoxSetTopVisibleEntry(buddyControls.listboxBuddies, visiblePos);
 }
 
+// GeneralsX @bugfix Android port 10/07/2026 GeneralsOnline's
+// OnlineServices_RoomsInterface.cpp calls a 2-arg updateBuddyInfo(bIsAutoRefresh,
+// bUseCache) -- upstream extended this function with those hints as part of
+// their own buddy-list rewrite (NGMP_OnlineServices_SocialInterface-backed,
+// caching-aware), which this port doesn't carry (out of scope, tied to the
+// larger WOL buddy-overlay UI rewrite this port deliberately skips). Bridging
+// to the existing 0-arg implementation and ignoring the hints is enough to
+// link; this whole buddy-list UI is legacy GameSpy, unreachable once
+// GeneralsOnline's own social/lobby screens exist.
+void updateBuddyInfo(bool bIsAutoRefresh, bool bUseCache)
+{
+	(void)bIsAutoRefresh;
+	(void)bUseCache;
+	updateBuddyInfo();
+}
+
 void HandleBuddyResponses()
 {
 	if (TheGameSpyBuddyMessageQueue)
