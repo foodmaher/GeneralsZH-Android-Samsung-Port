@@ -855,7 +855,10 @@ void NGMP_OnlineServices_LobbyInterface::UpdateRoomDataCache(std::function<void(
 
 						// dont let the service be authoritative during gameplay over play list, the game host handles connections at this point
 						// we do care about everything else up until members list though, because we need things like matchID which is determined as the game transitions to in progress
-						if (TheNGMPGame->isGameInProgress() && !TheGameLogic->IsLoadScreenActive())
+						// GeneralsX @bugfix Android port 10/07/2026 GameLogic::IsLoadScreenActive()
+						// doesn't exist in our tree; isLoadingMap() is the closest existing
+						// accessor for "we're mid-transition into a match".
+						if (TheNGMPGame->isGameInProgress() && !TheGameLogic->isLoadingMap())
 						{
 							NetworkLog(ELogVerbosity::LOG_RELEASE, "Ignoring lobby members update request during gameplay.");
 
@@ -1198,6 +1201,9 @@ void NGMP_OnlineServices_LobbyInterface::LeaveCurrentLobby()
 	// reset host migration flags
 	ResetHostMigrationFlags();
 
+	// GeneralsX @bugfix Android port 10/07/2026 P2P transport (NetworkMesh)
+	// deferred, see NGMP_include.h -- m_pLobbyMesh is always null in this build.
+#if defined(GENERALS_ONLINE_ENABLE_P2P_TRANSPORT)
 	// kill mesh
 	if (m_pLobbyMesh != nullptr)
 	{
@@ -1205,6 +1211,7 @@ void NGMP_OnlineServices_LobbyInterface::LeaveCurrentLobby()
 		delete m_pLobbyMesh;
 		m_pLobbyMesh = nullptr;
 	}
+#endif
 
 	if (TheNGMPGame != nullptr)
 	{

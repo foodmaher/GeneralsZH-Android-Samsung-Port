@@ -42,7 +42,12 @@ void showNotificationBox(AsciiString nick, UnicodeString message, bool bPlaySoun
 #define GENERALS_ONLINE_NET_VERSION 1
 #define GENERALS_ONLINE_SERVICE_VERSION 1
 
-#if !_DEBUG || defined(USE_DEBUG_ON_LIVE_SERVER)
+// GeneralsX @bugfix Android port 10/07/2026 the encrypted-credentials path
+// (OnlineServices_Auth.cpp) is built on Windows DPAPI (CryptProtectData) --
+// no portable equivalent wired up yet, so this stays Windows-only for now;
+// non-Windows builds keep the credentials file in plain JSON on disk (same
+// per-app sandboxing every other file this app writes already relies on).
+#if defined(_WIN32) && (!_DEBUG || defined(USE_DEBUG_ON_LIVE_SERVER))
 #define GENERALS_ONLINE_ENCRYPT_CREDENTIALS 1
 #endif
 

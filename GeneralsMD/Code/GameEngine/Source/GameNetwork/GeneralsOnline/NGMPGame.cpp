@@ -450,12 +450,17 @@ void NGMPGame::launchGame(void)
 	TheNetwork = NetworkInterface::createNetwork();
 	TheNetwork->init();
 	
+	// GeneralsX @bugfix Android port 10/07/2026 P2P transport (NetworkMesh)
+	// deferred, see NGMP_include.h -- GetNetworkMesh() is always null in this
+	// build, and NetworkInterface::SeedLatencyData() is itself part of the
+	// same upstream change set this port doesn't carry (existing engine file).
+#if defined(GENERALS_ONLINE_ENABLE_P2P_TRANSPORT)
 	NetworkMesh* pMesh = NGMP_OnlineServicesManager::GetNetworkMesh();
 	if (pMesh != nullptr)
 	{
-
 		TheNetwork->SeedLatencyData(pMesh->getMaximumHistoricalLatency());
 	}
+#endif
 
 	// TODO_NGMP: Do we really care about these values anymore
 	TheNetwork->setLocalAddress(getLocalIP(), 8888);
@@ -487,7 +492,9 @@ void NGMPGame::launchGame(void)
 	}
 
 	// Force camera to update from config
-	TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f, false);
+	// GeneralsX @bugfix Android port 10/07/2026 see NGMPGame::~NGMPGame() above --
+	// our setDefaultView() is still the 3-arg signature.
+	TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f);
 
 
 	// shutdown the top, but do not pop it off the stack

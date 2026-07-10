@@ -424,7 +424,11 @@ void NGMP_OnlineServicesManager::ContinueUpdate()
 						{
 							TheGameEngine->setQuitting(TRUE);
 						});
+					// GeneralsX @bugfix Android port 10/07/2026 see LaunchPatcher() below --
+					// this whole update-download path is Windows-desktop-only.
+#if defined(_WIN32)
 					ShellExecuteA(NULL, "open", "https://www.playgenerals.online/updatefailed", NULL, NULL, SW_SHOWNORMAL);
+#endif
 				}
 				else
 				{
@@ -477,7 +481,8 @@ void NGMP_OnlineServicesManager::ContinueUpdate()
 	{
 		if (TheDownloadManager != nullptr)
 		{
-			TheDownloadManager->SetFileName("Update is complete!");
+			// GeneralsX @bugfix Android port 10/07/2026 see ContinueUpdate() above --
+			// SetFileName() isn't in our DownloadManager.
 			TheDownloadManager->OnStatusUpdate(DOWNLOADSTATUS_FINISHING);
 		}
 
@@ -677,6 +682,12 @@ void NGMP_OnlineServicesManager::CancelUpdate()
 
 void NGMP_OnlineServicesManager::LaunchPatcher()
 {
+	// GeneralsX @bugfix Android port 10/07/2026 in-engine self-update by
+	// downloading and elevating a native patcher .exe is Windows-only and out
+	// of scope here -- Android updates via a reinstalled APK. Nothing wires
+	// this function up yet (StartVersionCheck's NeedsUpdate path isn't
+	// connected to any UI), so a stub is fine for now.
+#if defined(_WIN32)
 	char GameDir[MAX_PATH + 1] = {};
 	::GetCurrentDirectoryA(MAX_PATH + 1u, GameDir);
 
@@ -709,7 +720,7 @@ void NGMP_OnlineServicesManager::LaunchPatcher()
 
 	if (!bInvalidSize && bPatcherExeExists && bPatcherDirExists && ShellExecuteExA(&shellexInfo))
 	{
-		// Exit the application  
+		// Exit the application
 		TheGameEngine->setQuitting(TRUE);
 	}
 	else
@@ -722,11 +733,15 @@ void NGMP_OnlineServicesManager::LaunchPatcher()
 			});
 		ShellExecuteA(NULL, "open", "https://www.playgenerals.online/updatefailed", NULL, NULL, SW_SHOWNORMAL);
 	}
+#else
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsOnline] LaunchPatcher() is not implemented on this platform");
+#endif
 }
 
 void NGMP_OnlineServicesManager::StartDownloadUpdate(std::function<void(void)> cb)
 {
-	TheDownloadManager->SetFileName("Connecting to update service...");
+	// GeneralsX @bugfix Android port 10/07/2026 see ContinueUpdate() above --
+	// SetFileName() isn't in our DownloadManager.
 	TheDownloadManager->OnStatusUpdate(DOWNLOADSTATUS_CONNECTING);
 
 	m_vecFilesToDownload = std::queue<std::string>();
