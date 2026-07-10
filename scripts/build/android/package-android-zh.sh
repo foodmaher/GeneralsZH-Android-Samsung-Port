@@ -78,6 +78,14 @@ declare -a RUNTIME_LIB_CANDIDATES=(
     "libSDL3_image.so:_deps/sdl3_image-build/libSDL3_image.so"
     "libopenal.so:_deps/openal_soft-build/libopenal.so"
     "libgamespy.so:libgamespy.so"
+    # GeneralsX @bugfix Android port 10/07/2026 libadrenotools' own
+    # CMakeLists.txt (cmake/adrenotools.cmake) doesn't pin STATIC/SHARED, so
+    # it follows this project's BUILD_SHARED_LIBS -- which resolves to ON
+    # here (via the vcpkg-chainloaded NDK toolchain), making it an actual
+    # DT_NEEDED shared library of libmain.so, not just a statically-linked
+    # archive. CI's "Verify APK contains every library" step caught this
+    # missing on the first real build.
+    "libadrenotools.so:_deps/adrenotools-build/libadrenotools.so"
 )
 for entry in "${RUNTIME_LIB_CANDIDATES[@]}"; do
     name="${entry%%:*}"
