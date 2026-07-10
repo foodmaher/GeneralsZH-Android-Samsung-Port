@@ -404,7 +404,11 @@ void NGMP_OnlineServicesManager::ContinueUpdate()
 
 		if (TheDownloadManager != nullptr)
 		{
-			TheDownloadManager->SetFileName(AsciiString(strDownloadPath.c_str()));
+			// GeneralsX @bugfix Android port 10/07/2026 SetFileName() is part of
+			// upstream's Windows in-engine auto-patcher additions to DownloadManager
+			// (out of scope here -- see LaunchPatcher()/StartDownloadUpdate() below,
+			// this whole update-download path isn't reachable on Android, which
+			// updates via a reinstalled APK instead).
 			TheDownloadManager->OnStatusUpdate(DOWNLOADSTATUS_DOWNLOADING);
 		}
 

@@ -47,14 +47,14 @@ void NetworkLog(ELogVerbosity logVerbosity, const char* fmt, ...)
 		NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
 		if (pAuthInterface != nullptr && pAuthInterface->GetUserID() != -1)
 		{
-			m_strNetworkLogFileName = std::format("{}\\GeneralsOnlineData\\GeneralsOnline_UserID_{}.log", TheGlobalData->getPath_UserData().str(), pAuthInterface->GetUserID());
+			m_strNetworkLogFileName = std::format("{}/GeneralsOnlineData/GeneralsOnline_UserID_{}.log", TheGlobalData->getPath_UserData().str(), pAuthInterface->GetUserID());
 		}
 		else
 		{
 			return;
 		}
 #else
-		m_strNetworkLogFileName = std::format("{}\\GeneralsOnlineData\\GeneralsOnline.log", TheGlobalData->getPath_UserData().str());
+		m_strNetworkLogFileName = std::format("{}/GeneralsOnlineData/GeneralsOnline.log", TheGlobalData->getPath_UserData().str());
 #endif
 		/*
 			std::stringstream ss;
@@ -80,7 +80,11 @@ void NetworkLog(ELogVerbosity logVerbosity, const char* fmt, ...)
 		overwriteFile << std::put_time(std::localtime(&in_time_t), "Log Started at %Y/%m/%d %H:%M") << std::endl;
 	}
 
-	auto const time = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
+	// GeneralsX @bugfix Android port 10/07/2026 std::chrono::current_zone()
+	// (C++20 IANA-tzdb lookup) isn't implemented by the Android NDK's libc++
+	// -- this is just a debug-log timestamp, so UTC (no local-zone
+	// conversion) is an acceptable simplification here.
+	auto const time = std::chrono::system_clock::now();
 
 	char buffer[8192];
 	va_list args;
@@ -101,8 +105,12 @@ void NetworkLog(ELogVerbosity logVerbosity, const char* fmt, ...)
 	DevConsole.AddLog(strLogBuffer.c_str());
 #endif
 
+#if defined(_WIN32)
 	OutputDebugString(strLogBuffer.c_str());
 	OutputDebugString("\n");
+#else
+	fprintf(stderr, "%s\n", strLogBuffer.c_str());
+#endif
 }
 
 std::string Base64Encode(const std::vector<uint8_t>& data)

@@ -1,7 +1,8 @@
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/GeneralsOnline/NGMP_include.h"
-#include "GameNetwork/GeneralsOnline/NetworkPacket.h"
-#include "GameNetwork/GeneralsOnline/NetworkBitstream.h"
+// GeneralsX @bugfix Android port 10/07/2026 NetworkPacket.h/NetworkBitstream.h
+// (P2P transport) deferred, see NGMP_include.h -- unused in this file beyond
+// the include itself.
 #include "GameNetwork/GeneralsOnline/json.hpp"
 #include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"

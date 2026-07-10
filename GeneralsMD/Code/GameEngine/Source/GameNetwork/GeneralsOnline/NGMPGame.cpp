@@ -58,7 +58,11 @@ NGMPGame::NGMPGame()
 NGMPGame::~NGMPGame()
 {
 	// Force camera to update from config
-	TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f, true);
+	// GeneralsX @bugfix Android port 10/07/2026 upstream's setDefaultView grew
+	// a 4th (bool) param in a commit outside this port's scope (View.h/W3DView.h
+	// are existing engine files, not part of the GeneralsOnline module) -- our
+	// tree still has the 3-arg signature.
+	TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f);
 }
 
 void NGMPGame::SyncWithLobby(LobbyEntry& lobby)

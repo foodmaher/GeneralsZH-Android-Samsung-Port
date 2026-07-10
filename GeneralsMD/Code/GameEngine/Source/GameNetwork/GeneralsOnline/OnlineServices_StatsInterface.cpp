@@ -63,7 +63,11 @@ void NGMP_OnlineServices_StatsInterface::GetGlobalStats(std::function<void(Globa
 
 					int i = 0;
 
-#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : jsonObjectRoot[#name]) { iter.get_to(stats.##name[i++]); }
+// GeneralsX @bugfix Android port 10/07/2026 upstream's "stats.##name" pastes
+// the token "." with "name", producing the invalid token ".wins" -- plain
+// substitution (stats.name) is what was actually intended here (MSVC/clang
+// on Windows apparently let this slide; clang on Android does not).
+#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : jsonObjectRoot[#name]) { iter.get_to(stats.name[i++]); }
 					PROCESS_JSON_PER_GENERAL_RESULT(wins);
 					PROCESS_JSON_PER_GENERAL_RESULT(matches);
 				}
@@ -155,7 +159,11 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByID(int64_t userID, std
 							jsonObjectRoot["EloRating"].get_to(stats.elo_rating);
 							jsonObjectRoot["EloMatches"].get_to(stats.elo_num_matches);
 
-							#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : jsonObjectRoot[#name]) { iter.get_to(stats.##name[i++]); }
+							// GeneralsX @bugfix Android port 10/07/2026 upstream's "stats.##name" pastes
+// the token "." with "name", producing the invalid token ".wins" -- plain
+// substitution (stats.name) is what was actually intended here (MSVC/clang
+// on Windows apparently let this slide; clang on Android does not).
+#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : jsonObjectRoot[#name]) { iter.get_to(stats.name[i++]); }
 							PROCESS_JSON_PER_GENERAL_RESULT(wins);
 							PROCESS_JSON_PER_GENERAL_RESULT(losses);
 							PROCESS_JSON_PER_GENERAL_RESULT(games);
@@ -181,7 +189,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByID(int64_t userID, std
 							PROCESS_JSON_PER_GENERAL_RESULT(customGames);
 							PROCESS_JSON_PER_GENERAL_RESULT(QMGames);
 
-#define PROCESS_JSON_STANDARD_RESULT(name) jsonObjectRoot[#name].get_to(stats.##name)
+#define PROCESS_JSON_STANDARD_RESULT(name) jsonObjectRoot[#name].get_to(stats.name)
 							PROCESS_JSON_STANDARD_RESULT(locale);
 							PROCESS_JSON_STANDARD_RESULT(gamesAsRandom);
 							PROCESS_JSON_STANDARD_RESULT(options);
@@ -287,7 +295,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByBatch(std::vector<int6
 							// now get stats
 							int i = 0;
 
-#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : statsUserIter[#name]) { iter.get_to(stats.##name[i++]); }
+#define PROCESS_JSON_PER_GENERAL_RESULT(name) i = 0; for (const auto& iter : statsUserIter[#name]) { iter.get_to(stats.name[i++]); }
 							PROCESS_JSON_PER_GENERAL_RESULT(wins);
 							PROCESS_JSON_PER_GENERAL_RESULT(losses);
 							PROCESS_JSON_PER_GENERAL_RESULT(games);
@@ -313,7 +321,7 @@ void NGMP_OnlineServices_StatsInterface::findPlayerStatsByBatch(std::vector<int6
 							PROCESS_JSON_PER_GENERAL_RESULT(customGames);
 							PROCESS_JSON_PER_GENERAL_RESULT(QMGames);
 
-#define PROCESS_JSON_STANDARD_RESULT(name) statsUserIter[#name].get_to(stats.##name)
+#define PROCESS_JSON_STANDARD_RESULT(name) statsUserIter[#name].get_to(stats.name)
 							PROCESS_JSON_STANDARD_RESULT(locale);
 							PROCESS_JSON_STANDARD_RESULT(gamesAsRandom);
 							PROCESS_JSON_STANDARD_RESULT(options);

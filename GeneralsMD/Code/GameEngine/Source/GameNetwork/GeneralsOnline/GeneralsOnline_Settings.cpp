@@ -2,6 +2,9 @@
 #include "GameNetwork/GeneralsOnline/json.hpp"
 #include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 #define SETTINGS_KEY_CAMERA "camera"
 #define SETTINGS_KEY_CAMERA_MIN_HEIGHT "min_height"
@@ -63,7 +66,19 @@ float GenOnlineSettings::DetermineCameraMaxHeight()
 void GenOnlineSettings::Load(void)
 {
 	char GameDir[MAX_PATH + 1] = {};
+	// GeneralsX @bugfix Android port 10/07/2026 GameDir is only used below to
+	// check for a pre-6/23 legacy settings file next to the game's working
+	// directory -- a desktop-only migration path that will simply never find
+	// anything on Android (no such file could ever have existed there), so a
+	// portable getcwd() is enough; it doesn't need to be exactly right.
+#if defined(_WIN32)
 	::GetCurrentDirectoryA(MAX_PATH + 1u, GameDir);
+#else
+	if (getcwd(GameDir, MAX_PATH + 1) == nullptr)
+	{
+		GameDir[0] = '\0';
+	}
+#endif
 	std::string strSettingsFileDir = std::format("{}/GeneralsOnlineData/", TheGlobalData->getPath_UserData().str());
 	std::string strSettingsFilePath = std::format("{}/{}", strSettingsFileDir, SETTINGS_FILENAME);
 	std::string strSettingsFilePathLegacy = std::format("{}/{}", GameDir, SETTINGS_FILENAME_LEGACY);

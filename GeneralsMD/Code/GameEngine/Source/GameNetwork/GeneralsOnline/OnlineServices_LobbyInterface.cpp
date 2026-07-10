@@ -678,11 +678,15 @@ void NGMP_OnlineServices_LobbyInterface::Tick()
 	}
 #endif
 
+	// GeneralsX @bugfix Android port 10/07/2026 P2P transport (NetworkMesh)
+	// deferred, see NGMP_include.h -- m_pLobbyMesh is always null in this build.
+#if defined(GENERALS_ONLINE_ENABLE_P2P_TRANSPORT)
 	if (m_pLobbyMesh != nullptr)
 	{
 		m_pLobbyMesh->Flush();
 		m_pLobbyMesh->Tick();
 	}
+#endif
 
 	// TODO_NGMP: Do we still need this safety measure?
 	if (IsInLobby())

@@ -224,7 +224,7 @@ void HTTPRequest::PlatformStartRequest()
 		for (auto& kvPair : m_mapHeaders)
 		{
 			char szHeaderBuffer[8192] = { 0 };
-			sprintf_s(szHeaderBuffer, "%s: %s", kvPair.first.c_str(), kvPair.second.c_str());
+			snprintf(szHeaderBuffer, sizeof(szHeaderBuffer), "%s: %s", kvPair.first.c_str(), kvPair.second.c_str());
 			headers = curl_slist_append(headers, szHeaderBuffer);
 		}
 		curl_easy_setopt(m_pCURL, CURLOPT_HTTPHEADER, headers);
