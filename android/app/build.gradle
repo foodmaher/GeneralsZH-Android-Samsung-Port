@@ -83,11 +83,16 @@ android {
 
     packagingOptions {
         jniLibs {
-            // Keep .so files compressed in the APK and let the platform linker
-            // open them in place (Android 9+ default). dlopen("libdxvk_d3d8.so")
-            // from native code resolves through the app's linker namespace
-            // either way.
-            useLegacyPackaging false
+            // GeneralsX @bugfix Android port 10/07/2026 libadrenotools (custom
+            // Vulkan driver loading, cmake/adrenotools.cmake) hard-requires
+            // uncompressed, on-disk native libraries: it installs its hook by
+            // dlopen()ing .so files it expects to find at
+            // ApplicationInfo.nativeLibraryDir, which is only populated with
+            // real files when legacy packaging is on -- with it off, Android
+            // reads .so's straight out of the APK and nativeLibraryDir isn't
+            // a real, browsable directory. Costs a bit of APK size (no .so
+            // compression) in exchange for that directory existing.
+            useLegacyPackaging true
         }
     }
 }

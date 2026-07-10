@@ -51,6 +51,15 @@ if(SAGE_USE_SDL3)
     target_link_libraries(z_generals PRIVATE sdl3lib)
 endif()
 
+# GeneralsX @feature Android port 10/07/2026 libadrenotools (custom Vulkan
+# driver loading, see cmake/adrenotools.cmake) -- linked into libmain.so
+# itself since TryLoadCustomVulkanDriver() in SDL3Main.cpp must call
+# adrenotools_open_libvulkan() before DXVK's separately-built .so gets a
+# chance to dlopen the stock libvulkan.so on its own.
+if(ANDROID)
+    target_link_libraries(z_generals PRIVATE adrenotools)
+endif()
+
 # TODO Originally referred to build host and user, replace with git info perhaps?
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/GeneratedVersion.h
 "#pragma once

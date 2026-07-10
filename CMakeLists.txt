@@ -76,6 +76,10 @@ if(SAGE_USE_SDL3)
     include(cmake/sdl3.cmake)
 endif()
 
+# GeneralsX @feature Android port 10/07/2026 Optional custom Vulkan driver
+# loading (Adreno/Turnip via libadrenotools) -- self-guarded with if(ANDROID).
+include(cmake/adrenotools.cmake)
+
 # Define a dummy stlport target when not on VC6.
 if (IS_VS6_BUILD)
     include(cmake/stlport.cmake)

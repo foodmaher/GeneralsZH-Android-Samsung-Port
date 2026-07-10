@@ -93,6 +93,28 @@ for entry in "${RUNTIME_LIB_CANDIDATES[@]}"; do
     cp "${src}" "${JNILIBS}/"
 done
 
+# libadrenotools' hook shims (cmake/adrenotools.cmake). Not DT_NEEDED by
+# libmain.so -- adrenotools_open_libvulkan() dlopen()s these by path only
+# when a user has actually imported a custom driver via the Setup app's
+# "Custom Vulkan Driver" section, and that path is required to equal
+# nativeLibraryDir (i.e. this jniLibs directory). Package them unconditionally
+# so the feature works the first time someone imports a driver, without
+# needing a rebuild.
+declare -a ADRENOTOOLS_HOOK_LIBS=(
+    "libmain_hook.so"
+    "libfile_redirect_hook.so"
+    "libgsl_alloc_hook.so"
+    "libhook_impl.so"
+)
+for name in "${ADRENOTOOLS_HOOK_LIBS[@]}"; do
+    src="$(find "${BUILD_DIR}" -maxdepth 6 -name "${name}" 2>/dev/null | head -1)"
+    if [[ -z "${src}" || ! -f "${src}" ]]; then
+        echo "ERROR: ${name} not found anywhere under ${BUILD_DIR} — required by the Custom Vulkan Driver feature (cmake/adrenotools.cmake)."
+        exit 1
+    fi
+    cp "${src}" "${JNILIBS}/"
+done
+
 # libc++_shared.so from the NDK (ANDROID_STL=c++_shared)
 if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
     echo "ERROR: ANDROID_NDK_HOME must be set (for libc++_shared.so)."

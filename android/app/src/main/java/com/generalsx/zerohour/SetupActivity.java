@@ -160,6 +160,7 @@ public class SetupActivity extends Activity {
         addButton(actionsCard, "Clear Game Folder Setting", this::onClearGameFolder);
 
         buildUiScaleSection(root);
+        buildCustomDriverSection(root);
 
         LinearLayout helpCard = startCard(root, "How this works");
         TextView help = new TextView(this);
@@ -265,6 +266,233 @@ public class SetupActivity extends Activity {
 
     private void updateUiScaleLabel(int percent) {
         uiScaleLabel.setText("Scale: " + percent + "%");
+    }
+
+    // GeneralsX @feature Android port 10/07/2026 Optional custom Vulkan
+    // driver (e.g. Mesa Turnip for Adreno GPUs), loaded natively via
+    // libadrenotools -- see TryLoadCustomVulkanDriver() in SDL3Main.cpp.
+    // Package format matches the convention Winlator/AetherSX2/PPSSPP all
+    // use: a .zip containing meta.json (schemaVersion/name/description/
+    // author/packageVersion/vendor/driverVersion/minApi/libraryName) plus
+    // the driver .so (and any dependency .so's) alongside it. We never
+    // bundle a driver ourselves -- the user supplies one (e.g. from
+    // K11MCH1/AdrenoToolsDrivers or The412Banner/Banners-Turnip on GitHub),
+    // matching every other app that uses this technique.
+    private static final String CUSTOM_DRIVER_DIR_NAME = "custom_driver";
+    private static final String CUSTOM_DRIVER_CFG_NAME = "custom_driver.cfg";
+    private static final int REQUEST_IMPORT_DRIVER = 1002;
+
+    private TextView customDriverStatusView;
+
+    private void buildCustomDriverSection(LinearLayout root) {
+        LinearLayout content = startCard(root, "Custom Vulkan Driver (advanced, Adreno GPUs only)");
+
+        customDriverStatusView = new TextView(this);
+        customDriverStatusView.setText(customDriverStatusText());
+        customDriverStatusView.setPadding(0, 0, 0, dp(8));
+        content.addView(customDriverStatusView);
+
+        addButton(content, "Import Driver (.zip)", this::onImportCustomDriver);
+        addButton(content, "Clear Custom Driver", this::onClearCustomDriver);
+
+        TextView help = new TextView(this);
+        help.setAlpha(0.8f);
+        help.setText(
+            "Loads a user-supplied Vulkan driver (e.g. a Mesa Turnip build) instead "
+            + "of your phone's built-in one, the same technique Winlator and AetherSX2 "
+            + "use. This can let some Qualcomm Adreno phones run the game even if "
+            + "their stock driver only reports Vulkan 1.1/1.2 (DXVK needs 1.3).\n\n"
+            + "This does NOT help Mali, PowerVR, or other non-Adreno GPUs -- those "
+            + "are unaffected by this option, there is no equivalent for them.\n\n"
+            + "Download a Turnip driver .zip built for adrenotools/Winlator-style apps "
+            + "(for example from K11MCH1/AdrenoToolsDrivers or The412Banner/"
+            + "Banners-Turnip on GitHub) and import it here. Takes effect next launch, "
+            + "not live."
+        );
+        content.addView(help);
+    }
+
+    private String customDriverStatusText() {
+        File cfg = new File(getFilesDir(), CUSTOM_DRIVER_CFG_NAME);
+        if (!cfg.isFile()) {
+            return "No custom driver imported -- using your phone's built-in Vulkan driver.";
+        }
+        String driverName = readFirstLine(cfg);
+        return "Active custom driver: " + (driverName != null ? driverName : "(unknown)");
+    }
+
+    private void refreshCustomDriverStatus() {
+        if (customDriverStatusView != null) {
+            customDriverStatusView.setText(customDriverStatusText());
+        }
+    }
+
+    private void onImportCustomDriver() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+            "application/zip", "application/x-zip-compressed", "application/octet-stream"});
+        try {
+            startActivityForResult(intent, REQUEST_IMPORT_DRIVER);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file picker available: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void onClearCustomDriver() {
+        new File(getFilesDir(), CUSTOM_DRIVER_CFG_NAME).delete();
+        deleteRecursive(new File(getFilesDir(), CUSTOM_DRIVER_DIR_NAME));
+        refreshCustomDriverStatus();
+        Toast.makeText(this, "Custom driver cleared. The phone's built-in Vulkan driver will be used again.", Toast.LENGTH_SHORT).show();
+    }
+
+    // customDriverDir passed to adrenotools_open_libvulkan() MUST NOT be on
+    // sdcard/external storage (dlopen refuses world-writable paths) -- unzip
+    // straight into getFilesDir() (app-private internal storage), the same
+    // directory SDL_GetAndroidInternalStoragePath() resolves to in native code.
+    private void importCustomDriver(Uri uri) {
+        File destDir = new File(getFilesDir(), CUSTOM_DRIVER_DIR_NAME);
+        File tmpDir = new File(getFilesDir(), CUSTOM_DRIVER_DIR_NAME + ".tmp");
+        deleteRecursive(tmpDir);
+        if (!tmpDir.mkdirs()) {
+            Toast.makeText(this, "Could not create working folder for driver import", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+             java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(in)) {
+            java.util.zip.ZipEntry entry;
+            byte[] buf = new byte[8192];
+            String tmpCanonical = tmpDir.getCanonicalPath();
+            while ((entry = zip.getNextEntry()) != null) {
+                File out = new File(tmpDir, entry.getName()).getCanonicalFile();
+                // Zip-slip guard: never let an archive entry write outside tmpDir.
+                if (!out.getPath().equals(tmpCanonical) && !out.getPath().startsWith(tmpCanonical + File.separator)) {
+                    throw new java.io.IOException("zip entry escapes target folder: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    out.mkdirs();
+                    continue;
+                }
+                File parent = out.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                    int n;
+                    while ((n = zip.read(buf)) > 0) {
+                        fos.write(buf, 0, n);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            deleteRecursive(tmpDir);
+            Toast.makeText(this, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        File metaFile = findFileByName(tmpDir, "meta.json");
+        if (metaFile == null) {
+            deleteRecursive(tmpDir);
+            Toast.makeText(this, "Import failed: meta.json not found in the .zip (not a valid adrenotools driver package)", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String libraryName;
+        try {
+            org.json.JSONObject meta = new org.json.JSONObject(readWholeFile(metaFile));
+            libraryName = meta.optString("libraryName", "");
+            if (libraryName.isEmpty()) {
+                throw new org.json.JSONException("meta.json has no libraryName");
+            }
+            if (!new File(metaFile.getParentFile(), libraryName).isFile()) {
+                throw new org.json.JSONException("meta.json names '" + libraryName + "' but that file isn't in the package");
+            }
+        } catch (Exception e) {
+            deleteRecursive(tmpDir);
+            Toast.makeText(this, "Import failed: invalid meta.json (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // The driver .so + meta.json might be nested inside a subfolder of
+        // the zip -- move THAT folder into place as custom_driver/ (not
+        // tmpDir itself), so the native side's customDriverDir points at
+        // exactly the folder containing libraryName.
+        File driverSourceDir = metaFile.getParentFile();
+        deleteRecursive(destDir);
+        boolean moved = driverSourceDir.renameTo(destDir);
+        deleteRecursive(tmpDir);  // no-op if driverSourceDir WAS tmpDir (already moved away)
+        if (!moved) {
+            Toast.makeText(this, "Import failed: could not finalize driver folder", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        File cfg = new File(getFilesDir(), CUSTOM_DRIVER_CFG_NAME);
+        try (java.io.FileWriter w = new java.io.FileWriter(cfg, false)) {
+            w.write(libraryName);
+            w.write("\n");
+        } catch (java.io.IOException e) {
+            Toast.makeText(this, "Could not save driver config: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        refreshCustomDriverStatus();
+        Toast.makeText(this, "Driver imported: " + libraryName + ". Takes effect next launch.", Toast.LENGTH_LONG).show();
+    }
+
+    private static File findFileByName(File dir, String name) {
+        File[] children = dir.listFiles();
+        if (children == null) {
+            return null;
+        }
+        for (File c : children) {
+            if (c.isDirectory()) {
+                File found = findFileByName(c, name);
+                if (found != null) {
+                    return found;
+                }
+            } else if (c.getName().equals(name)) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private static void deleteRecursive(File f) {
+        if (f == null || !f.exists()) {
+            return;
+        }
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File c : children) {
+                    deleteRecursive(c);
+                }
+            }
+        }
+        f.delete();
+    }
+
+    private static String readWholeFile(File f) throws java.io.IOException {
+        StringBuilder sb = new StringBuilder();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f))) {
+            char[] buf = new char[4096];
+            int n;
+            while ((n = r.read(buf)) > 0) {
+                sb.append(buf, 0, n);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String readFirstLine(File f) {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f))) {
+            String line = r.readLine();
+            return line != null ? line.trim() : null;
+        } catch (java.io.IOException e) {
+            return null;
+        }
     }
 
     private File optionsIniFile() {
@@ -472,6 +700,11 @@ public class SetupActivity extends Activity {
                 Toast.makeText(this,
                     valid ? "Game folder saved." : "Saved, but no INIZH.big/INI.big found there — check the folder.",
                     Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == REQUEST_IMPORT_DRIVER && resultCode == Activity.RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) {
+                importCustomDriver(uri);
             }
         }
     }

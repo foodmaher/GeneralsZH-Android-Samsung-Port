@@ -53,6 +53,13 @@
 #include <filesystem>
 #include <string>
 #endif
+#if defined(__ANDROID__)
+// GeneralsX @feature Android port 10/07/2026 Optional custom Vulkan driver
+// loading (Adreno/Turnip), see TryLoadCustomVulkanDriver() below.
+#include <jni.h>
+#include <dlfcn.h>
+#include <adrenotools/driver.h>
+#endif
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
@@ -233,6 +240,120 @@ static void FilterPipeWireOpenAL()
 	fprintf(stderr, "INFO: OpenAL: keeping default driver selection on non-Linux platform\n");
 	#endif
 }
+
+#if defined(__ANDROID__)
+/**
+ * TryLoadCustomVulkanDriver
+ *
+ * GeneralsX @feature Android port 10/07/2026 Optional user-supplied Vulkan
+ * driver (most commonly a Mesa Turnip build for Adreno GPUs), loaded via
+ * libadrenotools (https://github.com/bylaws/libadrenotools, BSD-2-Clause).
+ * adrenotools installs a linker-namespace-bypass hook that transparently
+ * redirects EVERY later dlopen("libvulkan.so") call in this process to the
+ * custom driver -- including DXVK's own internal load in
+ * references/fbraz3-dxvk/src/vulkan/vulkan_loader.cpp, which is a separate
+ * meson-built .so and is never patched or made aware of this. Must run
+ * before that first happens, i.e. before SDL_Vulkan_LoadLibrary() below.
+ *
+ * The Setup app (SetupActivity.java) writes <internalPath>/custom_driver.cfg
+ * (one line: the driver .so's soname) and unpacks the driver itself into
+ * <internalPath>/custom_driver/ when the user imports one via its "Custom
+ * Vulkan Driver" section; both are absent by default, in which case this is
+ * a no-op and the stock vendor driver loads exactly as before.
+ *
+ * Adreno-only: Turnip has no Mali backend, so this cannot help phones whose
+ * GPU is Mali (see the Mali-G76 case documented further down this file) --
+ * those remain capped at whatever Vulkan version their proprietary driver
+ * reports. What it DOES help: Adreno phones whose stock driver reports
+ * Vulkan 1.1/1.2 while DXVK 2.6 needs 1.3.
+ */
+static void TryLoadCustomVulkanDriver(const char *internalPath)
+{
+	char cfgPath[1024];
+	snprintf(cfgPath, sizeof(cfgPath), "%s/custom_driver.cfg", internalPath);
+	FILE *cfg = fopen(cfgPath, "r");
+	if (cfg == nullptr) {
+		return;  // no custom driver configured -- stock driver loads as usual
+	}
+	char driverName[256] = {0};
+	bool haveDriverName = (fgets(driverName, sizeof(driverName), cfg) != nullptr);
+	fclose(cfg);
+	if (!haveDriverName) {
+		return;
+	}
+	size_t len = strlen(driverName);
+	while (len > 0 && (driverName[len - 1] == '\n' || driverName[len - 1] == '\r')) {
+		driverName[--len] = '\0';
+	}
+	if (len == 0) {
+		return;
+	}
+
+	char driverDir[1024];
+	snprintf(driverDir, sizeof(driverDir), "%s/custom_driver", internalPath);
+	if (access(driverDir, R_OK) != 0) {
+		fprintf(stderr, "WARNING: custom_driver.cfg names '%s' but %s doesn't exist -- using stock Vulkan driver\n",
+		        driverName, driverDir);
+		return;
+	}
+
+	// hookLibDir MUST be exactly what ApplicationInfo.nativeLibraryDir
+	// returns -- it contains a random per-install path component on modern
+	// Android and cannot be hardcoded, so fetch it via JNI from the JVM side
+	// the app is already running in (SDLActivity).
+	JNIEnv *jni = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
+	jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+	if (jni == nullptr || activity == nullptr) {
+		fprintf(stderr, "WARNING: custom Vulkan driver requested but no JNI environment -- using stock driver\n");
+		return;
+	}
+
+	std::string hookLibDir;
+	{
+		jclass activityClass = jni->GetObjectClass(activity);
+		jmethodID getApplicationInfo = jni->GetMethodID(
+			activityClass, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
+		jobject appInfo = jni->CallObjectMethod(activity, getApplicationInfo);
+		jclass appInfoClass = jni->GetObjectClass(appInfo);
+		jfieldID nativeLibraryDirField = jni->GetFieldID(appInfoClass, "nativeLibraryDir", "Ljava/lang/String;");
+		jstring nativeLibraryDirStr = static_cast<jstring>(jni->GetObjectField(appInfo, nativeLibraryDirField));
+		if (nativeLibraryDirStr != nullptr) {
+			const char *chars = jni->GetStringUTFChars(nativeLibraryDirStr, nullptr);
+			if (chars != nullptr) {
+				hookLibDir = chars;
+				jni->ReleaseStringUTFChars(nativeLibraryDirStr, chars);
+			}
+			jni->DeleteLocalRef(nativeLibraryDirStr);
+		}
+		jni->DeleteLocalRef(appInfo);
+		jni->DeleteLocalRef(appInfoClass);
+		jni->DeleteLocalRef(activityClass);
+	}
+	if (hookLibDir.empty()) {
+		fprintf(stderr, "WARNING: could not resolve nativeLibraryDir -- using stock Vulkan driver\n");
+		return;
+	}
+
+	void *mappingHandle = nullptr;
+	void *lib = adrenotools_open_libvulkan(
+		RTLD_NOW,
+		ADRENOTOOLS_DRIVER_CUSTOM,
+		/* tmpLibDir */ internalPath,
+		hookLibDir.c_str(),
+		driverDir,
+		driverName,
+		/* fileRedirectDir */ nullptr,
+		&mappingHandle);
+
+	if (lib == nullptr) {
+		fprintf(stderr, "WARNING: adrenotools_open_libvulkan('%s') failed -- falling back to stock Vulkan driver\n",
+		        driverName);
+		return;
+	}
+	fprintf(stderr, "INFO: Loaded custom Vulkan driver '%s' via libadrenotools (hookLibDir=%s)\n",
+	        driverName, hookLibDir.c_str());
+}
+#endif // __ANDROID__
 
 /**
  * CreateGameEngine
@@ -649,6 +770,17 @@ int main(int argc, char* argv[])
 		FilterSoftwareVulkanICDs();
 #endif
 		FilterPipeWireOpenAL();
+
+#if defined(__ANDROID__)
+		// Must run before SDL_Vulkan_LoadLibrary()/DXVK's own internal
+		// dlopen("libvulkan.so") below -- see TryLoadCustomVulkanDriver().
+		{
+			const char *internalPath = SDL_GetAndroidInternalStoragePath();
+			if (internalPath != nullptr) {
+				TryLoadCustomVulkanDriver(internalPath);
+			}
+		}
+#endif
 
 		// Load Vulkan library for DXVK DirectX8→Vulkan translation
 		fprintf(stderr, "INFO: Loading Vulkan library...\n");
