@@ -26,7 +26,16 @@ enum class EScreenshotType : int
 #include <mutex>
 #include <atomic>
 
+// GeneralsX @bugfix Android port 10/07/2026 this literal Windows-style path
+// doesn't correspond to a real library anywhere in our build (we link
+// CURL::libcurl via CMake instead) -- Clang honors #pragma comment(lib,...)
+// cross-platform via an ELF "dependent libraries" directive, so on Android
+// (lld) this became a hard link error: "unable to find library from
+// dependent library specifier: libcurl/libcurl.lib" for every object file
+// that (transitively) includes this header.
+#if defined(_WIN32)
 #pragma comment(lib, "libcurl/libcurl.lib")
+#endif
 
 
 #include <curl/curl.h>
