@@ -75,7 +75,16 @@ if [[ $CONFIGURE_ONLY -eq 1 ]]; then
 fi
 
 echo "==> Building z_generals (libmain.so) + DXVK d3d8/d3d9"
-cmake --build "${BUILD_DIR}" --target z_generals dxvk_d3d8_install
+# GeneralsX @bugfix Android port 10/07/2026 main_hook/file_redirect_hook/
+# gsl_alloc_hook/hook_impl (cmake/adrenotools.cmake) are separate shared
+# libraries adrenotools_open_libvulkan() dlopen()s by path at runtime -- they
+# are NOT a link-time dependency of z_generals (which only links the static
+# "adrenotools" lib), so a targeted Ninja build never produces them unless
+# named explicitly here. Missing this list is exactly what made
+# package-android-zh.sh's "libmain_hook.so not found" check fail on the
+# first CI run of the Custom Vulkan Driver feature.
+cmake --build "${BUILD_DIR}" --target z_generals dxvk_d3d8_install \
+    main_hook file_redirect_hook gsl_alloc_hook hook_impl
 
 # --- artifact verification ---------------------------------------------------
 # Silent fallbacks all exit 0; check what actually got built.

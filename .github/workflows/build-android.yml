@@ -282,7 +282,13 @@ jobs:
           # ninja -k 0: keep going past failures so ONE run surfaces every
           # cross-compile error in the 1.6M-LOC engine instead of one per
           # round-trip; the exit code still fails the step when anything broke.
-          cmake --build build/${{ env.PRESET }} --target z_generals dxvk_d3d8_install -- -k 0 2>&1 | tee logs/build_android.log
+          # main_hook/file_redirect_hook/gsl_alloc_hook/hook_impl
+          # (cmake/adrenotools.cmake): dlopen()'d by path at runtime, not a
+          # link-time dependency of z_generals, so a targeted build skips them
+          # unless named explicitly -- package-android-zh.sh's jniLibs staging
+          # requires all four to already exist.
+          cmake --build build/${{ env.PRESET }} --target z_generals dxvk_d3d8_install \
+            main_hook file_redirect_hook gsl_alloc_hook hook_impl -- -k 0 2>&1 | tee logs/build_android.log
           ccache --show-stats
 
       - name: Verify artifacts
