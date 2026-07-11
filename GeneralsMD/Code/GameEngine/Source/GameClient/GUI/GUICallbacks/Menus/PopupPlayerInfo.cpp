@@ -1554,14 +1554,20 @@ WindowMsgHandledType GameSpyPlayerInfoOverlayInput( GameWindow *window, Unsigned
 				// ----------------------------------------------------------------------------------------
 				case KEY_ESC:
 				{
-					
+					// GeneralsX @bugfix Android port 11/07/2026 - Diagnostic logging: pairs with the
+					// equivalent log in WOLLobbyMenuInput to determine whether the physical/gesture
+					// Back key on Android reaches this overlay's own KEY_ESC handler at all while
+					// it's open, or whether the underlying screen's handler fires instead/as well.
+					fprintf(stderr, "DEBUG-UI: GameSpyPlayerInfoOverlayInput KEY_ESC state=%d\n", (int)state);
+					fflush(stderr);
+
 					//
 					// send a simulated selected event to the parent window of the
 					// back/exit button
 					//
 					if( BitIsSet( state, KEY_STATE_UP ) )
 					{
-						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED, 
+						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
 																							(WindowMsgData)buttonClose, buttonCloseID );
 
 					}
@@ -1607,7 +1613,13 @@ WindowMsgHandledType GameSpyPlayerInfoOverlaySystem( GameWindow *window, Unsigne
 			}
 
 		case GWM_INPUT_FOCUS:
-			{	
+			{
+				// GeneralsX @bugfix Android port 11/07/2026 - Diagnostic logging: confirms whether
+				// this overlay is actually being asked for (and granted) input focus, which
+				// determines whether its own KEY_ESC handler or the underlying screen's fires.
+				fprintf(stderr, "DEBUG-UI: GameSpyPlayerInfoOverlaySystem GWM_INPUT_FOCUS mData1=%d\n", (int)mData1);
+				fflush(stderr);
+
 				// if we're givin the opportunity to take the keyboard focus we must say we want it
 				if( mData1 == TRUE )
 					*(Bool *)mData2 = TRUE;

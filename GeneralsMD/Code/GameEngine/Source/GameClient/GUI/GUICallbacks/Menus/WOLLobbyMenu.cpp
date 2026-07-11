@@ -2304,6 +2304,34 @@ WindowMsgHandledType WOLLobbyMenuInput( GameWindow *window, UnsignedInt msg,
 				// ----------------------------------------------------------------------------------------
 				case KEY_ESC:
 				{
+					// GeneralsX @bugfix Android port 11/07/2026 - The physical/gesture Back key on
+					// Android routes here as KEY_ESC. Each GameSpyOpenOverlay() popup (PopupPlayerInfo,
+					// Communicator/Buddy, Options, ...) has its own KEY_ESC handler that requests input
+					// focus and closes itself. If one of those overlays is open on top of this screen,
+					// don't ALSO simulate this screen's own Back click here -- popping/tearing down the
+					// whole lobby screen while a modal overlay is still alive on top of it is a plausible
+					// crash source (observed: real-device crash with an unresolvable PC right after
+					// pressing Back while a PopupPlayerInfo overlay was open). This is defense-in-depth:
+					// if overlay input focus is working correctly this branch is simply never taken.
+					Bool anyOverlayOpen = FALSE;
+					for (Int i = 0; i < GSOVERLAY_MAX; ++i)
+					{
+						if (GameSpyIsOverlayOpen((GSOverlayType)i))
+						{
+							anyOverlayOpen = TRUE;
+							break;
+						}
+					}
+
+					fprintf(stderr, "DEBUG-UI: WOLLobbyMenuInput KEY_ESC state=%d anyOverlayOpen=%d\n",
+						(int)state, (int)anyOverlayOpen);
+					fflush(stderr);
+
+					if (anyOverlayOpen)
+					{
+						// let the overlay's own input handler deal with it instead
+						return MSG_HANDLED;
+					}
 
 					//
 					// send a simulated selected event to the parent window of the
