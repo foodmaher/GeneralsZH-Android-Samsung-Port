@@ -161,6 +161,9 @@ const char* const KindOfMaskType::s_bitNameList[] =
 	"DEMOTRAP",
 	"CONSERVATIVE_BUILDING",
 	"IGNORE_DOCKING_BONES",
+	// GeneralsX @bugfix Android port 11/07/2026 keep in sync with
+	// KINDOF_RESERVED_SPARE_1 in KindOf.h.
+	"RESERVED_SPARE_1",
 
 	nullptr
 };

@@ -179,6 +179,19 @@ enum KindOfType CPP_11(: Int)
 	KINDOF_CONSERVATIVE_BUILDING,		///< Conservative structures aren't considered part of your base for sneak attack boundary calculations...
 	KINDOF_IGNORE_DOCKING_BONES,		///< Structure will not look up docking bones. Patch 1.03 hack.
 
+	// GeneralsX @bugfix Android port 11/07/2026 reserved/unused -- exists
+	// purely to keep KindOfMaskType's total bit count (and therefore its
+	// underlying BitFlags<N> instantiation) from colliding with
+	// ModelConditionFlags, which is ALSO BitFlags<117> in this codebase.
+	// BitFlags<N> is parameterized only by bit count with no distinguishing
+	// tag, so two unrelated flag types landing on the same N become the
+	// literal same C++ type, and both providing a full specialization of
+	// its static s_bitNameList is an ODR violation (confirmed via a real
+	// "duplicate symbol: BitFlags<117ul>::s_bitNameList" linker error after
+	// adding KINDOF_AIRFIELD back bumped this enum from 116 to 117 entries).
+	// Not parseable from INI -- see KindOf.cpp's matching name-list entry.
+	KINDOF_RESERVED_SPARE_1,
+
 	KINDOF_COUNT,										// total number of kindofs
 	KINDOF_FIRST = 0,
 };
