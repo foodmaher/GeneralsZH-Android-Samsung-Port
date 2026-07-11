@@ -1618,7 +1618,7 @@ WindowMsgHandledType GameSpyPlayerInfoOverlaySystem( GameWindow *window, Unsigne
 			{
 				GameWindow *control = (GameWindow *)mData1;
 				Int controlID = control->winGetWindowId();
-				fprintf(stderr, "DEBUG-UI: GameSpyPlayerInfoOverlaySystem GBM_SELECTED control='%s'\n", KEYNAME(controlID).str());
+				fprintf(stderr, "DEBUG-UI: GameSpyPlayerInfoOverlaySystem GBM_SELECTED control='%s'\n", KEYNAME((NameKeyType)controlID).str());
 				fflush(stderr);
 
 				if (controlID == buttonCloseID)

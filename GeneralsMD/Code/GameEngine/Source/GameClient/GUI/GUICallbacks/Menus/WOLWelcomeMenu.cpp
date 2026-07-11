@@ -931,7 +931,7 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 				{
 					GameWindow *controlForLog = (GameWindow *)mData1;
 					fprintf(stderr, "DEBUG-UI: WOLWelcomeMenuSystem GBM_SELECTED control='%s' buttonPushed=%d\n",
-						KEYNAME(controlForLog->winGetWindowId()).str(), (int)buttonPushed);
+						KEYNAME((NameKeyType)controlForLog->winGetWindowId()).str(), (int)buttonPushed);
 					fflush(stderr);
 				}
 				if (buttonPushed)

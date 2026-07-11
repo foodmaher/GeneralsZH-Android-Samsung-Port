@@ -2426,7 +2426,7 @@ WindowMsgHandledType WOLLobbyMenuSystem( GameWindow *window, UnsignedInt msg,
 			{
 				GameWindow *control = (GameWindow *)mData1;
 				Int controlID = control->winGetWindowId();
-				fprintf(stderr, "DEBUG-UI: WOLLobbyMenuSystem GLM_SELECTED control='%s'\n", KEYNAME(controlID).str());
+				fprintf(stderr, "DEBUG-UI: WOLLobbyMenuSystem GLM_SELECTED control='%s'\n", KEYNAME((NameKeyType)controlID).str());
 				fflush(stderr);
 				if ( controlID == GetGameListBoxID() )
 				{
@@ -2480,7 +2480,7 @@ WindowMsgHandledType WOLLobbyMenuSystem( GameWindow *window, UnsignedInt msg,
 				{
 					GameWindow *controlForLog = (GameWindow *)mData1;
 					fprintf(stderr, "DEBUG-UI: WOLLobbyMenuSystem GBM_SELECTED control='%s' buttonPushed=%d\n",
-						KEYNAME(controlForLog->winGetWindowId()).str(), (int)buttonPushed);
+						KEYNAME((NameKeyType)controlForLog->winGetWindowId()).str(), (int)buttonPushed);
 					fflush(stderr);
 				}
 

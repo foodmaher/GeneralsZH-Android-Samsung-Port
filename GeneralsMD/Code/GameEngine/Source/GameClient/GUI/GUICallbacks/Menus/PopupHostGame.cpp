@@ -586,7 +586,7 @@ WindowMsgHandledType PopupHostGameSystem( GameWindow *window, UnsignedInt msg, W
 		{
 			GameWindow *control = (GameWindow *)mData1;
 			Int controlID = control->winGetWindowId();
-			fprintf(stderr, "DEBUG-UI: PopupHostGameSystem GBM_SELECTED control='%s'\n", KEYNAME(controlID).str());
+			fprintf(stderr, "DEBUG-UI: PopupHostGameSystem GBM_SELECTED control='%s'\n", KEYNAME((NameKeyType)controlID).str());
 			fflush(stderr);
 
       if( controlID == buttonCancelID )
