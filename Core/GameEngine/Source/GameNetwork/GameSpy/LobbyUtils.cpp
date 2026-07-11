@@ -1192,14 +1192,32 @@ void RefreshGameListBox(GameWindow* win, Bool showMap)
 	}
 	int prevPos = GadgetListBoxGetTopVisibleEntry(win);
 
+	// GeneralsX @bugfix Android port 11/07/2026 SearchForLobbies()'s callbacks
+	// fire asynchronously (after an HTTP round-trip), so the screen this
+	// listbox belongs to can be torn down (e.g. the user hits Back) before
+	// they run -- capturing `win` by value in the lambdas below then left
+	// them touching a destroyed GameWindow, a real use-after-free confirmed
+	// via a real-device crash right after pressing Back out of Custom Match.
+	// Capture the window's stable ID instead (safe -- it's just an Int, not
+	// a pointer) and re-resolve it fresh inside each callback; a nullptr
+	// result means the screen is gone and there's nothing to update.
+	Int winID = win->winGetWindowId();
+
 	pLobbyInterface->SearchForLobbies(
 		[=]()
 		{
+			GameWindow* win = TheWindowManager->winGetWindowFromId(nullptr, winID);
+			if (!win)
+				return;
 			win->winEnable(false);
 			GadgetListBoxAddEntryText(win, UnicodeString(L"Searching for public lobbies..."), GameMakeColor(255, 194, 15, 255), -1, -1);
 		},
 		[=](std::vector<LobbyEntry> vecLobbies)
 		{
+			GameWindow* win = TheWindowManager->winGetWindowFromId(nullptr, winID);
+			if (!win)
+				return;
+
 			// empty listbox
 			GadgetListBoxReset(win);
 
