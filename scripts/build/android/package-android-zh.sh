@@ -210,12 +210,18 @@ fi
 
 # GeneralsOnline lobby screens (.wnd loose files) — the game only ever ships
 # .big archives via the user's own copied game data (see the header comment),
-# so these get the same copy-if-missing treatment as DefaultOptions.ini above,
-# landing at <external files dir>/Data/Window/Menus/, exactly mirroring
-# GeneralsX's own Data/Window/Menus/ convention (a loose file there overrides
-# the same-named entry inside a packed .big, standard Sage engine behavior).
-mkdir -p "${ASSETS}/Data/Window/Menus"
-cp "${PROJECT_ROOT}/GeneralsMD/Data/Window/Menus/"GeneralsOnline*.wnd "${ASSETS}/Data/Window/Menus/"
+# so these get the same copy-if-missing treatment as DefaultOptions.ini above.
+# GeneralsX @bugfix Android port 11/07/2026 destination is Window/Menus/, NOT
+# Data/Window/Menus/ -- confirmed via a real device crash log + reading
+# GameWindowManagerScript.cpp::winCreateFromScript(), which opens .wnd files
+# via TheFileSystem->openFile("Window\\<name>", ...) with no "Data\\" prefix
+# ever added (StdLocalFileSystem::openFile() resolves that relative to the
+# game's CWD verbatim). The source .wnd files stay under
+# GeneralsMD/Data/Window/Menus/ in-repo (mirrors GeneralsX's own
+# Data/Window/Menus/ authoring convention, e.g. GeneralsZH/Data/Window/Menus/
+# ExtrasMenu.wnd) -- only the staged/deployed path differs.
+mkdir -p "${ASSETS}/Window/Menus"
+cp "${PROJECT_ROOT}/GeneralsMD/Data/Window/Menus/"GeneralsOnline*.wnd "${ASSETS}/Window/Menus/"
 
 echo "==> Staged APK assets:"
 find "${ASSETS}" -type f | sed "s|${ASSETS}/|    |"

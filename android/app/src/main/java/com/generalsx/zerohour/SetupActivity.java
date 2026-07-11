@@ -784,14 +784,20 @@ public class SetupActivity extends Activity {
         copyFileIfMissing(new File(bundledRoot, "DefaultOptions.ini"), new File(gameFolderPath, "DefaultOptions.ini"));
         copyDirIfMissing(new File(bundledRoot, "fonts"), new File(gameFolderPath, "fonts"));
         // GeneralsX @feature Android port 10/07/2026 GeneralsOnline lobby
-        // .wnd screens (Data/Window/Menus/*.wnd, staged by
-        // package-android-zh.sh) are loose-file overrides the engine reads
-        // relative to CWD, same as fonts/ above -- nested under Data/Window,
-        // so the flat copyDirIfMissing doesn't reach them; walk the whole
-        // subtree instead. Per-file existence checks mean this naturally
-        // picks up newly-added screens on an already-configured install
-        // without touching anything the user may have customized.
-        copyDirTreeIfMissing(new File(bundledRoot, "Data/Window/Menus"), new File(gameFolderPath, "Data/Window/Menus"));
+        // .wnd screens (Window/Menus/*.wnd, staged by package-android-zh.sh)
+        // are loose-file overrides the engine reads relative to CWD, same as
+        // fonts/ above -- nested under Window/, so the flat copyDirIfMissing
+        // doesn't reach them; walk the whole subtree instead. Per-file
+        // existence checks mean this naturally picks up newly-added screens
+        // on an already-configured install without touching anything the
+        // user may have customized.
+        // GeneralsX @bugfix Android port 11/07/2026 destination is
+        // Window/Menus, NOT Data/Window/Menus -- confirmed via a real device
+        // crash log (winCreateLayout returned 0x0 for a real .wnd file that
+        // *was* present, just at the wrong path) plus reading
+        // GameWindowManagerScript.cpp: TheFileSystem->openFile() is called
+        // with "Window\\<name>", never "Data\\Window\\<name>".
+        copyDirTreeIfMissing(new File(bundledRoot, "Window/Menus"), new File(gameFolderPath, "Window/Menus"));
     }
 
     private static void copyFileIfMissing(File bundled, File dest) {
