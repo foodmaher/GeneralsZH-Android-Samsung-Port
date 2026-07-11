@@ -122,6 +122,7 @@ public class GeneralsOnlineActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         scroll.addView(root);
         setContentView(scroll);
+        InsetUtil.applySafeInsets(scroll);
 
         TextView title = new TextView(this);
         title.setText("GeneralsOnline Account");

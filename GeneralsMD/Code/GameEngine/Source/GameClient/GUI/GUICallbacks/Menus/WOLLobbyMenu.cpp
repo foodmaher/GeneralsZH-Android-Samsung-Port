@@ -765,9 +765,20 @@ void PopulateLobbyPlayerListbox()
 			{
 				// NOTE: We dont clear until we get a response, so there's no period where the box is empty
                 // save off old selection
+                // GeneralsX @bugfix Android port 11/07/2026 selectedIndices used
+                // to be an uninitialized Int* whose own ADDRESS was passed to
+                // GadgetListBoxGetSelected() -- for a multi-select listbox that
+                // function copies an array of up to GadgetListBoxGetMaxSelectedLength()
+                // indices into the caller's buffer, so passing a single
+                // uninitialized pointer variable (not a real buffer) let the
+                // copy write past it and left `selectedIndices` holding
+                // whatever garbage that overwrite produced. Confirmed via a
+                // real-device crash right after this call, reading through the
+                // resulting wild pointer at selectedIndices[i] below.
                 Int maxSelectedItems = GadgetListBoxGetNumEntries(listboxLobbyPlayers);
-                Int* selectedIndices;
-                GadgetListBoxGetSelected(listboxLobbyPlayers, (Int*)(&selectedIndices));
+                std::vector<Int> selectedIndicesBuf(GadgetListBoxGetMaxSelectedLength(listboxLobbyPlayers));
+                GadgetListBoxGetSelected(listboxLobbyPlayers, selectedIndicesBuf.data());
+                Int* selectedIndices = selectedIndicesBuf.data();
                 std::set<int> selectedUserIDs;
                 Int numSelected = 0;
                 for (Int i = 0; i < maxSelectedItems; ++i)
@@ -1405,22 +1416,32 @@ void WOLLobbyMenuInit( WindowLayout *layout, void *userData )
 // upon entry, retrieve room list
 
 	NGMP_OnlineServices_RoomsInterface* pRoomsInterfaceOuter = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_RoomsInterface>();
+	fprintf(stderr, "DEBUG-JOIN: WOLLobbyMenuInit pRoomsInterfaceOuter=%p, calling GetRoomList\n", (void*)pRoomsInterfaceOuter);
+	fflush(stderr);
 	if (pRoomsInterfaceOuter != nullptr)
 	{
 		pRoomsInterfaceOuter->GetRoomList([=]()
 			{
+				fprintf(stderr, "DEBUG-JOIN: GetRoomList complete, calling JoinRoom(0)\n");
+				fflush(stderr);
 				// attempt to join the first room
 				pRoomsInterfaceOuter->JoinRoom(0, []()
 					{
+						fprintf(stderr, "DEBUG-JOIN: JoinRoom onStart\n");
+						fflush(stderr);
 						//GadgetListBoxAddEntryText(listboxLobbyChat, UnicodeString(L"Attempting to join room"), GameMakeColor(255, 194, 15, 255), -1, -1);
 					},
 					[]()
 					{
+						fprintf(stderr, "DEBUG-JOIN: JoinRoom onComplete entry\n");
+						fflush(stderr);
 						GadgetListBoxReset(listboxLobbyChat);
 
 						NGMP_OnlineServices_RoomsInterface* pRoomsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_RoomsInterface>();
 						if (pRoomsInterface != nullptr)
 						{
+							fprintf(stderr, "DEBUG-JOIN: GetGroupRooms().size()=%zu\n", pRoomsInterface->GetGroupRooms().size());
+							fflush(stderr);
 							// TODO_NGMP: What can we do if empty? kick them out back to the front end?
 							if (!pRoomsInterface->GetGroupRooms().empty())
 							{
@@ -1442,14 +1463,23 @@ void WOLLobbyMenuInit( WindowLayout *layout, void *userData )
 							}
 						}
 
-
+						fprintf(stderr, "DEBUG-JOIN: calling refreshPlayerList(TRUE)\n");
+						fflush(stderr);
 						// refresh on join
 						refreshPlayerList(TRUE);
+						fprintf(stderr, "DEBUG-JOIN: refreshPlayerList returned, calling refreshGameList(TRUE)\n");
+						fflush(stderr);
 
 						refreshGameList(TRUE);
+						fprintf(stderr, "DEBUG-JOIN: refreshGameList returned, calling RefreshGameListBoxes()\n");
+						fflush(stderr);
 						RefreshGameListBoxes();
+						fprintf(stderr, "DEBUG-JOIN: RefreshGameListBoxes returned, calling PopulateLobbyFilterComboBox\n");
+						fflush(stderr);
 
 						PopulateLobbyFilterComboBox(comboLobbyGroupRooms);
+						fprintf(stderr, "DEBUG-JOIN: JoinRoom onComplete exit\n");
+						fflush(stderr);
 					});
 			});
 	}

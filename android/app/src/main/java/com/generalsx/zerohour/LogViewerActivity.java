@@ -109,6 +109,7 @@ public class LogViewerActivity extends Activity {
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
+        InsetUtil.applySafeInsets(root);
         loadLogs();
     }
 

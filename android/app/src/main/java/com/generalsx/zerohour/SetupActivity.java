@@ -98,6 +98,7 @@ public class SetupActivity extends Activity {
         int pad = dp(20);
         root.setPadding(pad, pad, pad, pad);
         setContentView(root);
+        InsetUtil.applySafeInsets(root);
 
         TextView warning = new TextView(this);
         warning.setText("The normal Settings UI failed to load (" + failure + "). "
@@ -134,6 +135,7 @@ public class SetupActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         scroll.addView(root);
         setContentView(scroll);
+        InsetUtil.applySafeInsets(scroll);
 
         TextView title = new TextView(this);
         title.setText("Command & Conquer Generals: Zero Hour");

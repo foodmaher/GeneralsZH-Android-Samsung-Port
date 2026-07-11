@@ -563,10 +563,16 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 		isFairPlayer = TRUE;
 	}
 
+	fprintf(stderr, "DEBUG-PBH: enter list=%p battleHonors=%d gamesInRow=%d lastGen=%d challenge=%d numGames=%d numDiscons=%d\n",
+		(void*)list, battleHonors, gamesInRow, lastGen, challenge, numGames, numDiscons);
+	fflush(stderr);
+
 	ResetBattleHonorInsertion();
 	GadgetListBoxAddEntryImage(list, NULL, 0, 0, 10, 10, TRUE, GameMakeColor(255,255,255,255));
 	row = 1;
 
+	fprintf(stderr, "DEBUG-PBH: fair play / air wing / tank / apocalypse group\n");
+	fflush(stderr);
 	InsertBattleHonor(list, TheMappedImageCollection->findImageByName("FairPlay"), isFairPlayer,
 		BATTLE_HONOR_FAIR_PLAY, row, column);
 
@@ -580,6 +586,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 	// create a spacer for row 2 and start the images on row 3
 	GadgetListBoxAddEntryImage(list, NULL, 2, 0, 10, 10, TRUE, GameMakeColor(255,255,255,255));
 	row = 3;
+	fprintf(stderr, "DEBUG-PBH: blitz group, row=%d\n", row);
+	fflush(stderr);
 
 	if (BitIsSet(battleHonors, BATTLE_HONOR_BLITZ5))
 	{
@@ -597,6 +605,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 			BATTLE_HONOR_BLITZ10, row, column);
 	}
 
+	fprintf(stderr, "DEBUG-PBH: streak group, row=%d\n", row);
+	fflush(stderr);
 	// TEST FOR STREAK HONOR
 	UnicodeString uStr;
 	Int streak = stats.winsInARow;
@@ -637,6 +647,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 			BATTLE_HONOR_STREAK_ONLINE, row, column, uStr);
 	}
 
+	fprintf(stderr, "DEBUG-PBH: domination group, row=%d\n", row);
+	fflush(stderr);
 	// TEST FOR DOMINATION HONOR
 	Int totalWins = 0;
 	PerGeneralMap::const_iterator pit;
@@ -671,6 +683,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 			BATTLE_HONOR_DOMINATION_ONLINE, row, column, uStr, totalWins);
 	}
 
+	fprintf(stderr, "DEBUG-PBH: global general group, row=%d\n", row);
+	fflush(stderr);
 	// TEST FOR GLOBAL GENERAL HONOR
 	InsertBattleHonor(list, TheMappedImageCollection->findImageByName("GlobalGen"), BitIsSet(battleHonors, BATTLE_HONOR_GLOBAL_GENERAL),
 		BATTLE_HONOR_GLOBAL_GENERAL, row, column);
@@ -744,6 +758,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 	}
 	*/
 
+	fprintf(stderr, "DEBUG-PBH: officers club group, row=%d\n", row);
+	fflush(stderr);
 	// TODO_NGMP_STATS
 	bool bPreordered = true;
 	//if (TheGameSpyInfo->didPlayerPreorder(stats.id))
@@ -752,6 +768,8 @@ static void populateBattleHonors(const PSPlayerStats& stats, Int battleHonors, I
 		InsertBattleHonor(list, TheMappedImageCollection->findImageByName("OfficersClub"), TRUE,
 			BATTLE_HONOR_OFFICERSCLUB, row, column);
 	}
+	fprintf(stderr, "DEBUG-PBH: exit\n");
+	fflush(stderr);
 }
 
 Int GetFavoriteSide( const PSPlayerStats& stats )
@@ -838,10 +856,14 @@ static GameWindow* findWindow(GameWindow *parent, AsciiString baseWindow, AsciiS
 
 void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 {
+	fprintf(stderr, "DEBUG-PPIW: enter parentWindowName='%s'\n", parentWindowName.str());
+	fflush(stderr);
 	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
 	NGMP_OnlineServices_StatsInterface* pStatsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_StatsInterface>();
 	if (pAuthInterface == nullptr || pStatsInterface == nullptr)
 	{
+		fprintf(stderr, "DEBUG-PPIW: bail -- pAuthInterface=%p pStatsInterface=%p\n", (void*)pAuthInterface, (void*)pStatsInterface);
+		fflush(stderr);
 		return;
 	}
 
@@ -869,25 +891,39 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 			return;
 	}
 
+	fprintf(stderr, "DEBUG-PPIW: calling findPlayerStatsByID lookupID=%lld parentWindow=%p\n", (long long)lookupID, (void*)parentWindow);
+	fflush(stderr);
 	pStatsInterface->findPlayerStatsByID(lookupID, [=](bool bSuccess, PSPlayerStats stats)
 		{
+			fprintf(stderr, "DEBUG-PPIW: lambda entry bSuccess=%d statsID=%lld\n", (int)bSuccess, (long long)stats.id);
+			fflush(stderr);
 			Bool weHaveStats = bSuccess;
 
 			// if we don't have the stats from the server, see if we have cached stats
 			if (!weHaveStats)
 			{
+				fprintf(stderr, "DEBUG-PPIW: no stats, bail\n");
+				fflush(stderr);
 				return;
 			}
 
 			if (!TheRankPointValues)
+			{
+				fprintf(stderr, "DEBUG-PPIW: TheRankPointValues is null, bail\n");
+				fflush(stderr);
 				return;
+			}
 
+			fprintf(stderr, "DEBUG-PPIW: calling CalculateRank\n");
+			fflush(stderr);
 			Int currentRank = 0;
 			Int rankPoints = CalculateRank(stats);
 			Int i = 0;
 			while (i + 1 < MAX_RANKS && rankPoints >= TheRankPointValues->m_ranks[i + 1])
 				++i;
 			currentRank = i;
+			fprintf(stderr, "DEBUG-PPIW: rankPoints=%d currentRank=%d\n", rankPoints, currentRank);
+			fflush(stderr);
 
 			PerGeneralMap::iterator it;
 			Int numWins = 0;
@@ -1084,6 +1120,8 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 				}
 			}
 
+			fprintf(stderr, "DEBUG-PPIW: entering favorite-side block, ThePlayerTemplateStore=%p\n", (void*)ThePlayerTemplateStore);
+			fflush(stderr);
 			//calculate favorite side and rank overlay image
 			UnicodeString rankStr; //, sideStr, sideRankStr;
 			const PlayerTemplate* pPlayerTemplate = NULL;  //NULL == newbie
@@ -1098,8 +1136,12 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 						favorite = it->first;
 					}
 				}
+				fprintf(stderr, "DEBUG-PPIW: mostGames=%d favorite=%d\n", mostGames, favorite);
+				fflush(stderr);
 				if (mostGames > 0)
 					pPlayerTemplate = ThePlayerTemplateStore->getNthPlayerTemplate(favorite);
+				fprintf(stderr, "DEBUG-PPIW: pPlayerTemplate=%p\n", (void*)pPlayerTemplate);
+				fflush(stderr);
 
 				//rank (ex: Corporal)
 				AsciiString rank;
@@ -1122,6 +1164,8 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 			}
 
 			//rank image;  based on rank and primary faction (USA, China, GLA)
+			fprintf(stderr, "DEBUG-PPIW: WinRank block, pPlayerTemplate=%p currentRank=%d rankPoints=%d\n", (void*)pPlayerTemplate, currentRank, rankPoints);
+			fflush(stderr);
 			win = findWindow(parentWindow, parentWindowName, "WinRank");
 			if (win && TheRankPointValues)
 			{
@@ -1131,14 +1175,20 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 					win->winSetEnabledImage(0, lookupRankImage(pPlayerTemplate->getBaseSide(), currentRank));
 				//x		win->setTooltipText(rankStr);  //ex: Corporal
 			}
+			fprintf(stderr, "DEBUG-PPIW: WinRank block done\n");
+			fflush(stderr);
 
 			//sub-faction overlay icon  (ex: Tank General, Toxin General, etc.)
 			win = findWindow(parentWindow, parentWindowName, "FactionImage");
 			if (win && pPlayerTemplate && TheRankPointValues && rankPoints)
 			{
+				fprintf(stderr, "DEBUG-PPIW: FactionImage calling getGeneralImage on pPlayerTemplate=%p\n", (void*)pPlayerTemplate);
+				fflush(stderr);
 				win->winSetEnabledImage(0, pPlayerTemplate->getGeneralImage());
 				//x		win->setTooltipText( sideStr );  //ex: Toxin General
 			}
+			fprintf(stderr, "DEBUG-PPIW: FactionImage block done\n");
+			fflush(stderr);
 
 			//favorite side and rank text (Ex: Tank Corporal)
 			win = findWindow(parentWindow, parentWindowName, "StaticTextRank");
@@ -1165,9 +1215,18 @@ void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 			win = findWindow(parentWindow, parentWindowName, "ListboxInfo");
 			if (win)
 			{
+				fprintf(stderr, "DEBUG-PPIW: calling populateBattleHonors battleHonors=%d gamesInRow=%d lastGeneral=%d challenge=%d win=%p\n",
+					stats.battleHonors, stats.gamesInRowWithLastGeneral, stats.lastGeneral, stats.challengeMedals, (void*)win);
+				fflush(stderr);
 				populateBattleHonors(stats, stats.battleHonors, stats.gamesInRowWithLastGeneral, stats.lastGeneral, stats.challengeMedals, win);
+				fprintf(stderr, "DEBUG-PPIW: populateBattleHonors returned\n");
+				fflush(stderr);
 			}
+			fprintf(stderr, "DEBUG-PPIW: lambda exit\n");
+			fflush(stderr);
 		}, EStatsRequestPolicy::BYPASS_CACHE_FORCE_REQUEST);
+	fprintf(stderr, "DEBUG-PPIW: exit (async call queued)\n");
+	fflush(stderr);
 }
 
 
