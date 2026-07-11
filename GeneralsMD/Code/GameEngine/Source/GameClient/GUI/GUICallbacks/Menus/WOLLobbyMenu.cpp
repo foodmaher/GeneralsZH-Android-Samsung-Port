@@ -749,8 +749,24 @@ static Int insertPlayerInListbox(const PlayerInfo& info, Color color)
 
 std::vector<int64_t> m_vecUsersProcessed;
 
+// GeneralsX @bugfix Android port 11/07/2026 PopulateLobbyPlayerListbox()'s
+// findPlayerStatsByBatch completion callback below is re-entrant: it can be
+// triggered again (e.g. by a roster-changed event) while a PREVIOUS call's
+// completion callback is still running its GadgetListBoxReset()+rebuild --
+// GadgetListBoxReset() frees every existing row's DisplayString, so a second
+// invocation clearing/rebuilding listboxLobbyPlayers while the first one is
+// still constructing captions for it (heavy Cyrillic-name font/glyph work,
+// per a real-device crash log) is a plausible use-after-free. The analogous
+// game-list refresh (LobbyUtils.cpp's RefreshGameListBox / SearchForLobbies)
+// already guards against this with m_bSearchInProgress; this path had no
+// equivalent. Mirror that pattern here.
+static Bool s_playerListboxRefreshInProgress = FALSE;
+
 void PopulateLobbyPlayerListbox()
 {
+	if (s_playerListboxRefreshInProgress)
+		return;
+
 	NGMP_OnlineServices_RoomsInterface* pRoomsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_RoomsInterface>();
 	NGMP_OnlineServices_StatsInterface* pStatsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_StatsInterface>();
 	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
@@ -772,8 +788,16 @@ void PopulateLobbyPlayerListbox()
 		}
 
 		// now batch request stats
+		s_playerListboxRefreshInProgress = TRUE;
 		pStatsInterface->findPlayerStatsByBatch(vecUserStatsToRequest, [=](bool bSuccess)
 			{
+				// GeneralsX @bugfix Android port 11/07/2026 clears
+				// s_playerListboxRefreshInProgress when this lambda invocation
+				// ends, on EVERY exit path (including the early `return` a bit
+				// further down for duplicate entries) -- see comment above
+				// PopulateLobbyPlayerListbox().
+				std::shared_ptr<void> refreshInProgressGuard(nullptr, [](void*) { s_playerListboxRefreshInProgress = FALSE; });
+
 				// NOTE: We dont clear until we get a response, so there's no period where the box is empty
                 // save off old selection
                 // GeneralsX @bugfix Android port 11/07/2026 selectedIndices used
