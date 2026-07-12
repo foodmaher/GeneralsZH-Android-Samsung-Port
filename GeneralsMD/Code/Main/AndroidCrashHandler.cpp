@@ -71,7 +71,17 @@ int hexDigitValue(char c) {
 	return 0;
 }
 
-static char s_mapsBuf[65536];
+// GeneralsX @bugfix Android port 12/07/2026 - 64KB was too small: a build
+// this size (DXVK, GNS + its ICE/signaling worker threads, curl, freetype,
+// SDL3, etc.) routinely produces a /proc/self/maps well past 64KB, so the
+// read loop below silently truncated before reaching the entries needed to
+// resolve the crash PC/LR/early backtrace frames -- confirmed by comparing
+// a real device crash log (PC, LR and backtrace[0..3] all "no matching
+// entry") against the same build's unstripped libmain.so, where backtrace[4]
+// onward (present in the captured portion) resolved cleanly to ordinary,
+// uncorrupted call frames (SDL_main -> GameMain -> SDL3GameEngine::execute),
+// i.e. the process wasn't corrupted, the maps read just ran out of buffer.
+static char s_mapsBuf[1 << 20];
 
 bool findLibraryForAddress(uintptr_t pc, char *outName, size_t outNameLen, uintptr_t *outOffset) {
 	int fd = open("/proc/self/maps", O_RDONLY);
