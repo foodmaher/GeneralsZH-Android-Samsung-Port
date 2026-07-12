@@ -2000,7 +2000,22 @@ WindowMsgHandledType WOLBuddyOverlayRCMenuSystem( GameWindow *window, UnsignedIn
 					TheGameSpyPSMessageQueue->addRequest(req);
 #endif
 				}
-				closeRightClickMenu(window);
+				// GeneralsX @bugfix Android port 12/07/2026 - closeRightClickMenu(window)
+				// used to be called directly here, destroying this rcMenu window without
+				// ever going through TheWindowManager::winSetLoneWindow(). This rc menu was
+				// registered as the "lone window" when it was created (see
+				// winSetLoneWindow(rcMenu) above), so TheWindowManager's m_loneWindow was
+				// left pointing at freed memory the moment this window was destroyed --
+				// the next mouse click anywhere (winProcessMouseEvent -> winSetLoneWindow)
+				// would try to send GGM_CLOSE to that dangling pointer and crash with an
+				// unresolvable PC (confirmed via a real-device backtrace: winProcessMouseEvent
+				// -> winSetLoneWindow -> [wild jump], right after opening a player's profile
+				// from this menu's "View Stats" button then clicking anything else). Route
+				// through winSetLoneWindow(nullptr) instead -- it sends GGM_CLOSE to the
+				// current lone window itself (which lands right back in the GGM_CLOSE case
+				// below, calling closeRightClickMenu the same way), then correctly clears
+				// m_loneWindow afterward.
+				TheWindowManager->winSetLoneWindow(nullptr);
 				break;
 			}
 		default:
