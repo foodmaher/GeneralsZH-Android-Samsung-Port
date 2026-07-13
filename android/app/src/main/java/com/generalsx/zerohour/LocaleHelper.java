@@ -1,0 +1,102 @@
+/*
+**	Command & Conquer Generals Zero Hour(tm)
+**	Copyright 2025 Electronic Arts Inc.
+**
+**	This program is free software: you can redistribute it and/or modify
+**	it under the terms of the GNU General Public License as published by
+**	the Free Software Foundation, either version 3 of the License, or
+**	(at your option) any later version.
+**
+**	This program is distributed in the hope that it will be useful,
+**	but WITHOUT ANY WARRANTY; without even the implied warranty of
+**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+**	GNU General Public License for more details.
+**
+**	You should have received a copy of the GNU General Public License
+**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+// GeneralsX @feature Android port 13/07/2026 GitHub issue #4: an in-app
+// language override for the launcher UI (Setup, folder picker, log viewer),
+// independent of the game itself (whose text comes from the user's own
+// .big files and isn't something this app controls).
+//
+// Deliberately NOT using AppCompatDelegate.setApplicationLocales() -- this
+// app doesn't otherwise depend on androidx.appcompat, and pulling it in
+// just for this would be a heavier dependency than the manual
+// attachBaseContext() override below, which works identically on every API
+// level this project targets (including pre-33 devices, the actual
+// low-end/old-phone audience this port cares about).
+//
+// "System Default" (no saved preference) intentionally does nothing here:
+// the Activity's base context is already configured with the system
+// locale, and resource resolution already falls back to the un-suffixed
+// values/ (English) when no values-<lang>/ matches -- both halves of "system
+// locale, or English if unsupported" are automatic, no override needed.
+
+package com.generalsx.zerohour;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.os.Build;
+
+import java.util.Locale;
+
+final class LocaleHelper {
+
+    static final String PREFS_NAME = "generalszh_setup";
+    static final String PREF_LANGUAGE_TAG = "language_tag";
+
+    // GeneralsX @feature Android port 13/07/2026 Keep this in the same order
+    // shown in the Setup UI's language picker.
+    static final String[] SUPPORTED_TAGS = { "", "en", "ru", "de", "uk", "es", "zh" };
+
+    private LocaleHelper() {}
+
+    static String getSavedLanguageTag(Context ctx) {
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return prefs.getString(PREF_LANGUAGE_TAG, "");
+    }
+
+    static void setSavedLanguageTag(Context ctx, String tag) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREF_LANGUAGE_TAG, tag)
+            .apply();
+    }
+
+    // Call from every Activity's attachBaseContext(Context) that has
+    // localized resources: super.attachBaseContext(LocaleHelper.wrap(base)).
+    static Context wrap(Context base) {
+        String tag = getSavedLanguageTag(base);
+        if (tag == null || tag.isEmpty()) {
+            return base;  // "System Default" -- leave the base context alone.
+        }
+        Locale locale = Locale.forLanguageTag(tag);
+        Locale.setDefault(locale);
+
+        Configuration config = new Configuration(base.getResources().getConfiguration());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            config.setLocale(locale);
+        } else {
+            config.locale = locale;
+        }
+        return base.createConfigurationContext(config);
+    }
+
+    static String displayNameFor(Context ctx, String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return ctx.getString(R.string.setup_language_system_default);
+        }
+        switch (tag) {
+            case "en": return "English";
+            case "ru": return "Русский";
+            case "de": return "Deutsch";
+            case "uk": return "Українська";
+            case "es": return "Español";
+            case "zh": return "中文 (简体)";
+            default:   return tag;
+        }
+    }
+}
