@@ -194,6 +194,10 @@ class DDSFileClass
 	unsigned* LevelSizes;
 	unsigned* LevelOffsets;
 	unsigned CubeFaceSize;
+	// GeneralsX @feature Codex 22/07/2026 Track classic linear DDS payloads separately from the legacy DXT path.
+	bool Linear;
+	unsigned DataOffset;
+	unsigned DataSize;
 	LegacyDDSURFACEDESC2 SurfaceDesc;
 	char Name[256];
 
@@ -217,6 +221,7 @@ public:
 	const unsigned char* Get_Memory_Pointer(unsigned level) const;
 	unsigned Get_Level_Size(unsigned level) const;
 	WW3DFormat Get_Format() const { return Format; }
+	bool Is_Linear() const { return Linear; }
 
 	DDSType Get_Type() const { return Type; }
 

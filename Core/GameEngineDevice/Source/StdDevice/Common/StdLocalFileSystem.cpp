@@ -33,6 +33,9 @@
 #include "StdDevice/Common/StdLocalFile.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 
 #ifndef _WIN32
@@ -41,6 +44,35 @@
 // The StdBIGFileSystem sets this after resolving the primary asset directory so that relative paths like
 // "Data\Scripts\SkirmishScripts.scb" can be found in the asset root when the cwd lookup fails.
 static std::filesystem::path s_assetFallbackPath;
+
+// GeneralsX @feature Codex 22/07/2026 Resolve generated overlay paths with the same case tolerance as normal Android assets.
+static std::filesystem::path findCaseInsensitivePath(const std::filesystem::path& root,const std::filesystem::path& relative)
+{
+	std::filesystem::path current=root;
+	std::error_code ec;
+	for (const auto& part : relative)
+	{
+		const std::filesystem::path direct=current/part;
+		if (std::filesystem::exists(direct,ec) && !ec)
+		{
+			current=direct;
+			continue;
+		}
+		ec.clear();
+		std::filesystem::path matched;
+		for (const auto& entry : std::filesystem::directory_iterator(current,ec))
+		{
+			if (strcasecmp(entry.path().filename().string().c_str(),part.string().c_str())==0)
+			{
+				matched=entry.path();
+				break;
+			}
+		}
+		if (ec || matched.empty()) return std::filesystem::path();
+		current=matched;
+	}
+	return current;
+}
 #endif
 
 StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
@@ -64,6 +96,40 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 	std::filesystem::path path(std::move(fixedFilename));
 
 #ifndef _WIN32
+	// GeneralsX @feature Codex 22/07/2026 Give the opt-in RGBA8 tree priority without replacing normal loose files or archives.
+	const char *textureFallbackRoot=std::getenv("GX_TEXTURE_FALLBACK_ROOT");
+	std::string extension=path.extension().string();
+	std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (!(access&File::WRITE) && path.is_relative() && extension==".dds" &&
+		textureFallbackRoot!=nullptr && textureFallbackRoot[0]!='\0')
+	{
+		bool safeRelativePath=true;
+		for (const auto& part : path)
+		{
+			if (part=="..")
+			{
+				safeRelativePath=false;
+				break;
+			}
+		}
+		if (safeRelativePath)
+		{
+			std::filesystem::path fallbackPath=std::filesystem::path(textureFallbackRoot)/path;
+			std::error_code fallbackError;
+			if (!std::filesystem::is_regular_file(fallbackPath,fallbackError))
+			{
+				fallbackPath=findCaseInsensitivePath(std::filesystem::path(textureFallbackRoot),path);
+				fallbackError.clear();
+			}
+			if (!fallbackPath.empty() && std::filesystem::is_regular_file(fallbackPath,fallbackError))
+			{
+				fprintf(stderr,"[GX_TEXTURE_FALLBACK] source='%s' replacement='%s'\n",
+					filename,fallbackPath.string().c_str());
+				return fallbackPath;
+			}
+		}
+	}
+
 	// check if the file exists to see if fixup is required
 	// if it's not found try to match disregarding case sensitivity
 	// For cases where a write is happening, we should check if the parent path exists, if so, let it through, since the file may not exist yet.

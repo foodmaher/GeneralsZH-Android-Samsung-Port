@@ -6,6 +6,11 @@ This folder is organized by function for easier maintenance and discovery.
 
 ### `build/` - Build & Deployment Scripts per Platform
 
+#### `build/android/` - Android Build and Deployment
+- `build-android-zh.sh` - Configure and compile the Android ARM64 engine and DXVK
+- `package-android-zh.sh` - Stage native libraries and produce the APK
+- `push-assets-android.sh` - Incrementally prepare and push the opt-in RGBA8 texture overlay
+
 #### `build/linux/` - Linux & Docker Build
 Scripts for Linux native and Docker-based builds:
 - `build-linux-appimage-generals.sh` - Package GeneralsX as AppImage (portable single-file Linux distribution)
@@ -44,6 +49,9 @@ Reserved for modern Windows toolchain (VS2022 + SDL3 + DXVK + OpenAL)
 
 ### `tooling/` - Code Analysis & Utilities
 
+#### `tooling/assets/` - Asset Preparation
+- `convert_dds_rgba8.py` - Convert BC1/BC2/BC3 DDS trees to classic A8R8G8B8 DDS overlays
+
 #### `tooling/clang-tidy/` - Custom clang-tidy Plugin
 - `plugin/` - Custom clang-tidy checks source (C++ checks for AsciiString, Singleton patterns)
 - `run.py` - Unified clang-tidy runner with batch processing and quiet output
@@ -57,6 +65,9 @@ Utilities for large-scale code refactoring and fixes:
 - `unify_move_files.py` - Move files between Generals/GeneralsMD/Core with CMakeLists.txt updates
 
 ### `qa/` - Quality Assurance & Testing
+
+#### `qa/dds/` - Synthetic DDS Tests
+- `test_convert_dds_rgba8.py` - Validate BC decoding, mip preservation, malformed input, paths, and incrementality
 
 #### `qa/smoke/` - Smoke Tests
 - `docker-smoke-test-zh.sh` - Quick startup validation (expects crash, checks init output)

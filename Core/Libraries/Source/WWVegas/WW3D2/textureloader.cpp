@@ -1442,7 +1442,9 @@ static bool	Get_Texture_Information
 		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_DXT2 &&
 		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_DXT3 &&
 		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_DXT4 &&
-		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_DXT5) {
+		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_DXT5 &&
+		// GeneralsX @feature Codex 22/07/2026 Keep cached metadata valid for classic RGBA DDS fallback files.
+		thumb->Get_Original_Texture_Format()!=WW3D_FORMAT_A8R8G8B8) {
 		return false;
 	}
 
@@ -1480,14 +1482,14 @@ static constexpr const unsigned MinTextureDepth = 1u;
 
 // If the size doesn't match, try and see if texture reduction would help...
 // (mainly for cases where loaded texture is larger than hardware limit)
-static void Apply_Dim_Reduction(unsigned& width, unsigned& height, unsigned& reduction, unsigned mip_count)
+static void Apply_Dim_Reduction(unsigned& width, unsigned& height, unsigned& reduction, unsigned mip_count, unsigned min_texture_dim=MinTextureDim)
 {
 	unsigned dummy_depth = 1;
 
 	for (unsigned r = reduction; r < mip_count; ++r)
 	{
-		unsigned w = max(width >> r, MinTextureDim);
-		unsigned h = max(height >> r, MinTextureDim);
+		unsigned w = max(width >> r, min_texture_dim);
+		unsigned h = max(height >> r, min_texture_dim);
 		unsigned tmp_w = w;
 		unsigned tmp_h = h;
 
@@ -1530,7 +1532,8 @@ static void Apply_Dim_Reduction_With_Depth(unsigned& width, unsigned& height, un
 }
 
 
-static void Apply_Mip_Reduction(unsigned& mip_level_count, unsigned reduction, unsigned width, unsigned height, unsigned mip_count)
+static void Apply_Mip_Reduction(unsigned& mip_level_count, unsigned reduction, unsigned width, unsigned height, unsigned mip_count,
+	unsigned min_texture_dim=MinTextureDim, bool preserve_full_chain=false)
 {
 	// If texture wants all mip levels, take as many as the file contains (not necessarily all)
 	// Otherwise take as many mip levels as the texture wants, not to exceed the count in file...
@@ -1551,9 +1554,9 @@ static void Apply_Mip_Reduction(unsigned& mip_level_count, unsigned reduction, u
 	// Once more, verify that the mip level count is correct (in case it was changed here it might not
 	// match the size...well actually it doesn't have to match but it can't be bigger than the size)
 	unsigned int max_mip_level_count = 1;
-	unsigned int dim = MinTextureDim;
+	unsigned int dim = min_texture_dim;
 
-	while (dim < width && dim < height)
+	while (preserve_full_chain ? (dim < width || dim < height) : (dim < width && dim < height))
 	{
 		dim <<= 1;
 		max_mip_level_count++;
@@ -1602,9 +1605,12 @@ bool TextureLoadTaskClass::Begin_Compressed_Load()
 
 	Width = orig_width;
 	Height = orig_height;
-	Apply_Dim_Reduction(Width, Height, Reduction, orig_mip_count);
+	// GeneralsX @feature Codex 22/07/2026 Linear DDS files may legally retain mip levels below one BC block.
+	const bool linearDDS=orig_format==WW3D_FORMAT_A8R8G8B8;
+	const unsigned minimumDimension=linearDDS ? 1u : MinTextureDim;
+	Apply_Dim_Reduction(Width, Height, Reduction, orig_mip_count,minimumDimension);
 
-	Apply_Mip_Reduction(MipLevelCount, Reduction, Width, Height, orig_mip_count);
+	Apply_Mip_Reduction(MipLevelCount, Reduction, Width, Height, orig_mip_count,minimumDimension,linearDDS);
 
 	D3DTexture	= DX8Wrapper::_Create_DX8_Texture
 	(
@@ -1768,10 +1774,11 @@ bool TextureLoadTaskClass::Load_Compressed_Mipmap()
 	// regular 2d texture
 	unsigned int width = Get_Width();
 	unsigned int height = Get_Height();
+	const unsigned minimumDimension=dds_file.Is_Linear() ? 1u : MinTextureDim;
 
 	for (unsigned int level = 0; level < Get_Mip_Level_Count(); ++level)
 	{
-		WWASSERT(width >= MinTextureDim && height >= MinTextureDim);
+		WWASSERT(width >= minimumDimension && height >= minimumDimension);
 
 		dds_file.Copy_Level_To_Surface
 		(
@@ -1784,8 +1791,8 @@ bool TextureLoadTaskClass::Load_Compressed_Mipmap()
 			HSVShift
 		);
 
-		width >>= 1;
-		height >>= 1;
+		width = max(width >> 1,minimumDimension);
+		height = max(height >> 1,minimumDimension);
 	}
 
 	return true;

@@ -271,26 +271,26 @@ static void FilterPipeWireOpenAL()
  * reports. What it DOES help: Adreno phones whose stock driver reports
  * Vulkan 1.1/1.2 while DXVK 2.6 needs 1.3.
  */
-static void TryLoadCustomVulkanDriver(const char *internalPath)
+static bool TryLoadCustomVulkanDriver(const char *internalPath)
 {
 	char cfgPath[1024];
 	snprintf(cfgPath, sizeof(cfgPath), "%s/custom_driver.cfg", internalPath);
 	FILE *cfg = fopen(cfgPath, "r");
 	if (cfg == nullptr) {
-		return;  // no custom driver configured -- stock driver loads as usual
+		return false;  // no custom driver configured -- stock driver loads as usual
 	}
 	char driverName[256] = {0};
 	bool haveDriverName = (fgets(driverName, sizeof(driverName), cfg) != nullptr);
 	fclose(cfg);
 	if (!haveDriverName) {
-		return;
+		return false;
 	}
 	size_t len = strlen(driverName);
 	while (len > 0 && (driverName[len - 1] == '\n' || driverName[len - 1] == '\r')) {
 		driverName[--len] = '\0';
 	}
 	if (len == 0) {
-		return;
+		return false;
 	}
 
 	char driverDir[1024];
@@ -298,7 +298,7 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	if (access(driverDir, R_OK) != 0) {
 		fprintf(stderr, "WARNING: custom_driver.cfg names '%s' but %s doesn't exist -- using stock Vulkan driver\n",
 		        driverName, driverDir);
-		return;
+		return false;
 	}
 
 	// hookLibDir MUST be exactly what ApplicationInfo.nativeLibraryDir
@@ -309,7 +309,7 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
 	if (jni == nullptr || activity == nullptr) {
 		fprintf(stderr, "WARNING: custom Vulkan driver requested but no JNI environment -- using stock driver\n");
-		return;
+		return false;
 	}
 
 	std::string hookLibDir;
@@ -335,7 +335,7 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	}
 	if (hookLibDir.empty()) {
 		fprintf(stderr, "WARNING: could not resolve nativeLibraryDir -- using stock Vulkan driver\n");
-		return;
+		return false;
 	}
 
 	void *mappingHandle = nullptr;
@@ -352,10 +352,11 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	if (lib == nullptr) {
 		fprintf(stderr, "WARNING: adrenotools_open_libvulkan('%s') failed -- falling back to stock Vulkan driver\n",
 		        driverName);
-		return;
+		return false;
 	}
 	fprintf(stderr, "INFO: Loaded custom Vulkan driver '%s' via libadrenotools (hookLibDir=%s)\n",
 	        driverName, hookLibDir.c_str());
+	return true;
 }
 #endif // __ANDROID__
 
@@ -588,11 +589,11 @@ int main(int argc, char* argv[])
 		// information beyond "unknown exception" — DXVK's own error log is
 		// exactly what would explain a failure that deep (unsupported
 		// instance/device extension, missing Vulkan feature, etc.) and
-		// "none" was silencing it. "error" still excludes the per-frame
-		// WARN-level render-state spam the iOS port's "none" setting was
-		// actually chasing (hundreds of MB/session); only genuine failures
-		// are rare enough not to reproduce that problem.
-		setenv("DXVK_LOG_LEVEL", "error", 0);
+		// "none" was silencing it. The RGBA8 compatibility proof also needs
+		// DXVK's one-time INFO-level physical-device and enabled-feature report;
+		// the engine's own high-volume render-state diagnostics are separate.
+		// GeneralsX @tweak Codex 22/07/2026 Keep DXVK's one-time adapter and feature report visible for Android capability diagnosis.
+		setenv("DXVK_LOG_LEVEL", "info", 0);
 
 		// GeneralsX @bugfix Android port 08/07/2026 Disable DXVK's background
 		// memory defragmentation. Two real-device crash reports (screen
@@ -686,6 +687,39 @@ int main(int argc, char* argv[])
 		if (!didChdir) {
 			fprintf(stderr, "WARNING: could not enter game data directory (external storage unavailable?)\n");
 		}
+
+		// GeneralsX @feature Codex 22/07/2026 Enable the isolated RGBA8 loose-file root only when its explicit profile marker is installed.
+		std::error_code assetPathError;
+		const std::filesystem::path selectedAssetPath=std::filesystem::current_path(assetPathError);
+		const bool assetDirectoryReady=didChdir && !assetPathError;
+		const std::filesystem::path fallbackPath=selectedAssetPath/"TextureFallback"/"RGBA8";
+		const std::filesystem::path profilePath=fallbackPath/"texture-fallback.cfg";
+		bool rgba8Profile=false;
+		FILE *profileFile=assetDirectoryReady ? fopen(profilePath.string().c_str(),"r") : nullptr;
+		if (profileFile!=nullptr)
+		{
+			char profileLine[64]={0};
+			if (fgets(profileLine,sizeof(profileLine),profileFile)!=nullptr)
+			{
+				profileLine[strcspn(profileLine,"\r\n")]='\0';
+				if (strcmp(profileLine,"profile=rgba8")==0)
+				{
+					rgba8Profile=true;
+					setenv("GX_TEXTURE_FALLBACK_ROOT",fallbackPath.string().c_str(),1);
+					setenv("GX_ANDROID_TEXTURE_PROFILE","rgba8",1);
+				}
+			}
+			fclose(profileFile);
+		}
+		if (!rgba8Profile)
+		{
+			unsetenv("GX_TEXTURE_FALLBACK_ROOT");
+			setenv("GX_ANDROID_TEXTURE_PROFILE","default",1);
+		}
+		fprintf(stderr,"[GX_ANDROID_GRAPHICS] texture_profile=%s asset_directory='%s' fallback_directory='%s'\n",
+			rgba8Profile ? "rgba8" : "default",
+			assetDirectoryReady ? selectedAssetPath.string().c_str() : "unavailable",
+			rgba8Profile ? fallbackPath.string().c_str() : "disabled");
 
 		// GeneralsX @feature Android port 13/07/2026 Game DATA language
 		// override (separate from the launcher's own UI language, see
@@ -817,9 +851,17 @@ int main(int argc, char* argv[])
 		// dlopen("libvulkan.so") below -- see TryLoadCustomVulkanDriver().
 		{
 			const char *internalPath = SDL_GetAndroidInternalStoragePath();
+			bool libadrenotoolsActive=false;
+			bool turnipAutoSelected=false;
 			if (internalPath != nullptr) {
-				TryLoadCustomVulkanDriver(internalPath);
+				char autoMarkerPath[1024];
+				snprintf(autoMarkerPath,sizeof(autoMarkerPath),"%s/custom_driver.auto",internalPath);
+				turnipAutoSelected=access(autoMarkerPath,F_OK)==0;
+				libadrenotoolsActive=TryLoadCustomVulkanDriver(internalPath);
 			}
+			// GeneralsX @feature Codex 22/07/2026 Report whether Vulkan is still stock or was redirected through libadrenotools.
+			fprintf(stderr,"[GX_ANDROID_GRAPHICS] libadrenotools_active=%d turnip_auto_selected=%d\n",
+				libadrenotoolsActive ? 1 : 0,(libadrenotoolsActive && turnipAutoSelected) ? 1 : 0);
 		}
 #endif
 

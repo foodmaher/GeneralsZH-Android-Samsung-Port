@@ -26,6 +26,8 @@
 #include "bitmaphandler.h"
 #include "colorspace.h"
 
+#include <cstdio>
+
 // GeneralsX @build fbraz 10/02/2026 DirectDraw header Windows-only
 // Linux: Define DDS constants locally (fighter19 pattern)
 #ifdef _WIN32
@@ -53,11 +55,19 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	Format(WW3D_FORMAT_UNKNOWN),
 	Type(DDS_TEXTURE),
 	DateTime(0),
-	CubeFaceSize(0)
+	CubeFaceSize(0),
+	Linear(false),
+	DataOffset(0),
+	DataSize(0)
 {
 	strlcpy(Name,name,sizeof(Name));
 	// The name could be given in .tga or .dds format, so ensure we're opening .dds...
 	int len=strlen(Name);
+	if (len < 3)
+	{
+		fprintf(stderr, "[GX_DDS] rejected '%s': filename has no extension\n", name);
+		return;
+	}
 	Name[len-3]='d';
 	Name[len-2]='d';
 	Name[len-1]='s';
@@ -79,29 +89,179 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	char header[4];
 
 	unsigned read_bytes=file->Read(header,4);
-	if (!read_bytes)
+	// GeneralsX @bugfix Codex 22/07/2026 Reject malformed DDS input before interpreting its binary header.
+	if (read_bytes != sizeof(header) || memcmp(header, "DDS ", sizeof(header)) != 0)
 	{
-		WWASSERT("File loading failed trying to read header");
+		fprintf(stderr, "[GX_DDS] rejected '%s': invalid DDS magic\n", Name);
+		file->Close();
 		return;
 	}
 	// Now, we read DDSURFACEDESC2 defining the compressed data
 	read_bytes=file->Read(&SurfaceDesc,sizeof(LegacyDDSURFACEDESC2));
 	// Verify the structure size matches the read size
-	if (read_bytes==0 || read_bytes!=SurfaceDesc.Size)
+	if (read_bytes != sizeof(LegacyDDSURFACEDESC2) ||
+		SurfaceDesc.Size != sizeof(LegacyDDSURFACEDESC2) ||
+		SurfaceDesc.PixelFormat.Size != sizeof(LegacyDDPIXELFORMAT))
 	{
-		StringClass tmp(0,true);
-		tmp.Format("File %s loading failed.\nTried to read %d bytes, got %d. (SurfDesc.size=%d)",name,sizeof(LegacyDDSURFACEDESC2),read_bytes,SurfaceDesc.Size);
-		WWASSERT_PRINT(0,tmp.str());
+		fprintf(stderr, "[GX_DDS] rejected '%s': invalid DDS header size\n", Name);
+		file->Close();
 		return;
 	}
 
-	Format=D3DFormat_To_WW3DFormat((D3DFORMAT)SurfaceDesc.PixelFormat.FourCC);
-	WWASSERT(
-		Format==WW3D_FORMAT_DXT1 ||
-		Format==WW3D_FORMAT_DXT2 ||
-		Format==WW3D_FORMAT_DXT3 ||
-		Format==WW3D_FORMAT_DXT4 ||
-		Format==WW3D_FORMAT_DXT5);
+	const unsigned DDPF_ALPHAPIXELS = 0x00000001;
+	const unsigned DDPF_FOURCC = 0x00000004;
+	const unsigned DDPF_RGB = 0x00000040;
+	if (SurfaceDesc.PixelFormat.Flags & DDPF_FOURCC)
+	{
+		Format=D3DFormat_To_WW3DFormat((D3DFORMAT)SurfaceDesc.PixelFormat.FourCC);
+		if (Format!=WW3D_FORMAT_DXT1 &&
+			Format!=WW3D_FORMAT_DXT2 &&
+			Format!=WW3D_FORMAT_DXT3 &&
+			Format!=WW3D_FORMAT_DXT4 &&
+			Format!=WW3D_FORMAT_DXT5)
+		{
+			fprintf(stderr, "[GX_DDS] rejected '%s': unsupported FourCC 0x%08x\n",
+				Name, SurfaceDesc.PixelFormat.FourCC);
+			file->Close();
+			return;
+		}
+	}
+	// GeneralsX @feature Codex 22/07/2026 Accept the classic 32-bit A8R8G8B8 DDS layout emitted by the Android fallback converter.
+	else if ((SurfaceDesc.PixelFormat.Flags & (DDPF_RGB | DDPF_ALPHAPIXELS)) == (DDPF_RGB | DDPF_ALPHAPIXELS) &&
+		SurfaceDesc.PixelFormat.RGBBitCount == 32 &&
+		SurfaceDesc.PixelFormat.RBitMask == 0x00ff0000 &&
+		SurfaceDesc.PixelFormat.GBitMask == 0x0000ff00 &&
+		SurfaceDesc.PixelFormat.BBitMask == 0x000000ff &&
+		SurfaceDesc.PixelFormat.RGBAlphaBitMask == 0xff000000)
+	{
+		Format=WW3D_FORMAT_A8R8G8B8;
+		Linear=true;
+	}
+	else
+	{
+		fprintf(stderr, "[GX_DDS] rejected '%s': unsupported pixel format\n", Name);
+		file->Close();
+		return;
+	}
+
+	if (SurfaceDesc.Width == 0 || SurfaceDesc.Height == 0)
+	{
+		fprintf(stderr, "[GX_DDS] rejected '%s': zero texture dimension\n", Name);
+		file->Close();
+		return;
+	}
+
+	// check texture type, normal, cube or volume
+	if (SurfaceDesc.Caps.Caps2&DDSCAPS2_CUBEMAP)
+	{
+		Type=DDS_CUBEMAP;
+	}
+	else if (SurfaceDesc.Caps.Caps2&DDSCAPS2_VOLUME)
+	{
+		Type=DDS_VOLUME;
+	}
+
+	if (Linear)
+	{
+		if (Type != DDS_TEXTURE)
+		{
+			fprintf(stderr, "[GX_DDS] rejected '%s': linear cube and volume DDS files are not supported\n", Name);
+			file->Close();
+			return;
+		}
+
+		unsigned sourceMipLevels=SurfaceDesc.MipMapCount;
+		if (sourceMipLevels==0) sourceMipLevels=1;
+		unsigned maximumMipLevels=1;
+		for (unsigned dimension=max(SurfaceDesc.Width,SurfaceDesc.Height); dimension>1; dimension>>=1)
+		{
+			maximumMipLevels++;
+		}
+		if (sourceMipLevels>maximumMipLevels)
+		{
+			fprintf(stderr, "[GX_DDS] rejected '%s': invalid mip count %u for %ux%u texture\n",
+				Name, sourceMipLevels, SurfaceDesc.Width, SurfaceDesc.Height);
+			file->Close();
+			return;
+		}
+
+		if (ReductionFactor>=sourceMipLevels) ReductionFactor=sourceMipLevels-1;
+		MipLevels=sourceMipLevels-ReductionFactor;
+		FullWidth=SurfaceDesc.Width;
+		FullHeight=SurfaceDesc.Height;
+		FullDepth=1;
+		Width=max(1u,SurfaceDesc.Width>>ReductionFactor);
+		Height=max(1u,SurfaceDesc.Height>>ReductionFactor);
+		Depth=1;
+
+		auto calculateLinearLevelSize=[](unsigned mipWidth,unsigned mipHeight,unsigned& levelSize) -> bool
+		{
+			const unsigned maximum=~0u;
+			if (mipHeight>maximum/4u || mipWidth>maximum/(mipHeight*4u)) return false;
+			levelSize=mipWidth*mipHeight*4u;
+			return true;
+		};
+
+		unsigned long long skippedBytes=0;
+		for (unsigned level=0; level<ReductionFactor; ++level)
+		{
+			const unsigned mipWidth=max(1u,SurfaceDesc.Width>>level);
+			const unsigned mipHeight=max(1u,SurfaceDesc.Height>>level);
+			unsigned levelSize=0;
+			if (!calculateLinearLevelSize(mipWidth,mipHeight,levelSize))
+			{
+				fprintf(stderr, "[GX_DDS] rejected '%s': oversized linear mip %u\n", Name, level);
+				file->Close();
+				return;
+			}
+			skippedBytes+=levelSize;
+		}
+
+		unsigned long long dataBytes=0;
+		for (unsigned level=0; level<MipLevels; ++level)
+		{
+			const unsigned mipWidth=max(1u,Width>>level);
+			const unsigned mipHeight=max(1u,Height>>level);
+			unsigned levelSize=0;
+			if (!calculateLinearLevelSize(mipWidth,mipHeight,levelSize))
+			{
+				fprintf(stderr, "[GX_DDS] rejected '%s': oversized linear mip %u\n", Name, level+ReductionFactor);
+				file->Close();
+				return;
+			}
+			dataBytes+=levelSize;
+		}
+		const unsigned long long headerBytes=sizeof(header)+sizeof(LegacyDDSURFACEDESC2);
+		const int rawFileBytes=file->Size();
+		const unsigned long long maximumFileIo=0x7fffffffu;
+		const unsigned long long fileBytes=rawFileBytes>=0 ? (unsigned)rawFileBytes : 0u;
+		if (rawFileBytes<0 || headerBytes+skippedBytes>maximumFileIo ||
+			dataBytes==0 || dataBytes>maximumFileIo ||
+			headerBytes+skippedBytes+dataBytes>fileBytes)
+		{
+			fprintf(stderr, "[GX_DDS] rejected '%s': truncated or oversized linear mip data\n", Name);
+			file->Close();
+			return;
+		}
+
+		LevelSizes=W3DNEWARRAY unsigned[MipLevels];
+		LevelOffsets=W3DNEWARRAY unsigned[MipLevels];
+		unsigned offset=0;
+		for (unsigned level=0; level<MipLevels; ++level)
+		{
+			const unsigned mipWidth=max(1u,Width>>level);
+			const unsigned mipHeight=max(1u,Height>>level);
+			LevelSizes[level]=(unsigned)((unsigned long long)mipWidth*mipHeight*4u);
+			LevelOffsets[level]=offset;
+			offset+=LevelSizes[level];
+		}
+		DataOffset=(unsigned)(headerBytes+skippedBytes);
+		DataSize=(unsigned)dataBytes;
+		file->Close();
+		fprintf(stderr, "[GX_DDS] source='%s' format=A8R8G8B8 size=%ux%u mips=%u reduction=%u\n",
+			Name, Width, Height, MipLevels, ReductionFactor);
+		return;
+	}
 
 	MipLevels=SurfaceDesc.MipMapCount;
 	if (MipLevels==0) MipLevels=1;
@@ -115,17 +275,6 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	// Drop the two lowest miplevels!
 	if (MipLevels>2) MipLevels-=2;
 	else MipLevels=1;
-
-	// check texture type, normal, cube or volume
-	if (SurfaceDesc.Caps.Caps2&DDSCAPS2_CUBEMAP)
-	{
-		Type=DDS_CUBEMAP;
-	}
-	else if (SurfaceDesc.Caps.Caps2&DDSCAPS2_VOLUME)
-	{
-		Type=DDS_VOLUME;
-	}
-
 
 	FullWidth=SurfaceDesc.Width;
 	FullHeight=SurfaceDesc.Height;
@@ -198,7 +347,7 @@ unsigned DDSFileClass::Get_Width(unsigned level) const
 {
 	WWASSERT(level<MipLevels);
 	unsigned width=Width>>level;
-	if (width<4) width=4;
+	if (width<(Linear ? 1u : 4u)) width=(Linear ? 1u : 4u);
 	return width;
 }
 
@@ -206,7 +355,7 @@ unsigned DDSFileClass::Get_Height(unsigned level) const
 {
 	WWASSERT(level<MipLevels);
 	unsigned height=Height>>level;
-	if (height<4) height=4;
+	if (height<(Linear ? 1u : 4u)) height=(Linear ? 1u : 4u);
 	return height;
 }
 
@@ -214,7 +363,7 @@ unsigned DDSFileClass::Get_Depth(unsigned level) const
 {
 	WWASSERT(level<MipLevels);
 	unsigned depth=Depth>>level;
-	if (depth<4) depth=4;
+	if (depth<(Linear ? 1u : 4u)) depth=(Linear ? 1u : 4u);
 	return depth;
 }
 
@@ -268,7 +417,26 @@ bool DDSFileClass::Load()
 		return false;
 	}
 
-	file->Open();
+	if (!file->Open()) return false;
+	if (Linear)
+	{
+		if (file->Seek(DataOffset,SEEK_SET)!=(int)DataOffset)
+		{
+			file->Close();
+			return false;
+		}
+		DDSMemory=MSGW3DNEWARRAY("DDSMemory") unsigned char[DataSize];
+		const unsigned readSize=file->Read(DDSMemory,DataSize);
+		file->Close();
+		if (readSize!=DataSize)
+		{
+			delete[] DDSMemory;
+			DDSMemory=nullptr;
+			fprintf(stderr, "[GX_DDS] failed reading '%s': expected %u bytes, got %u\n", Name, DataSize, readSize);
+			return false;
+		}
+		return true;
+	}
 	// Data size is file size minus the header and info block
 	unsigned size=file->Size()-SurfaceDesc.Size-4;
 
@@ -398,6 +566,51 @@ void DDSFileClass::Copy_Level_To_Surface
 
 	// If the format and size is a match just copy the contents
 	bool has_hsv_shift = hsv_shift[0]!=0.0f || hsv_shift[1]!=0.0f || hsv_shift[2]!=0.0f;
+	if (Linear)
+	{
+		if (dest_width!=Get_Width(level) || dest_height!=Get_Height(level))
+		{
+			fprintf(stderr, "[GX_DDS] cannot copy '%s' mip %u: source=%ux%u destination=%ux%u\n",
+				Name, level, Get_Width(level), Get_Height(level), dest_width, dest_height);
+			return;
+		}
+
+		const unsigned destBpp=Get_Bytes_Per_Pixel(dest_format);
+		if (dest_surface==nullptr || destBpp==0 || dest_width>~0u/destBpp || dest_pitch<dest_width*destBpp)
+		{
+			fprintf(stderr, "[GX_DDS] cannot copy '%s' mip %u: invalid destination format, pointer, or pitch\n",
+				Name, level);
+			return;
+		}
+		const unsigned char* source=Get_Memory_Pointer(level);
+		const unsigned sourcePitch=Get_Width(level)*4u;
+		if (dest_format==Format && !has_hsv_shift)
+		{
+			for (unsigned y=0; y<dest_height; ++y)
+			{
+				memcpy(dest_surface+y*dest_pitch,source+y*sourcePitch,sourcePitch);
+			}
+			return;
+		}
+
+		for (unsigned y=0; y<dest_height; ++y)
+		{
+			unsigned char* destination=dest_surface+y*dest_pitch;
+			for (unsigned x=0; x<dest_width; ++x)
+			{
+				unsigned pixel=Get_Pixel(level,x,y);
+				if (has_hsv_shift)
+				{
+					const unsigned alpha=pixel&0xff000000;
+					Recolor(pixel,hsv_shift);
+					pixel=(pixel&0x00ffffff)|alpha;
+				}
+				BitmapHandlerClass::Write_B8G8R8A8(destination,dest_format,pixel);
+				destination+=destBpp;
+			}
+		}
+		return;
+	}
 	if (dest_format==Format && dest_width==Get_Width(level) && dest_height==Get_Height(level)) {
 		// If hue shift, we can't just copy...
 		if (has_hsv_shift) {
@@ -917,6 +1130,14 @@ unsigned DDSFileClass::Get_Pixel(unsigned level,unsigned x,unsigned y) const
 	WWASSERT(level<MipLevels);
 	WWASSERT(x<Get_Width(level));
 	WWASSERT(y<Get_Height(level));
+
+	if (Linear && Format==WW3D_FORMAT_A8R8G8B8)
+	{
+		unsigned pixel=0;
+		const unsigned char* source=Get_Memory_Pointer(level)+(y*Get_Width(level)+x)*4u;
+		memcpy(&pixel,source,sizeof(pixel));
+		return pixel;
+	}
 
 	switch (Format) {
 	// Note that we don't currently really support alpha on DXT1 - all alpha textures should use DXT5.

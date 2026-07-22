@@ -16,6 +16,24 @@
 #
 # Apply with: git -C references/fbraz3-dxvk apply ../../Patches/dxvk-android.patch
 # Then build with: meson setup --cross-file build/<preset>/meson-arm64-android-cross.ini ...
+diff --git a/src/dxvk/dxvk_adapter.cpp b/src/dxvk/dxvk_adapter.cpp
+index 981b0003..6f865466 100644
+--- a/src/dxvk/dxvk_adapter.cpp
++++ b/src/dxvk/dxvk_adapter.cpp
+@@ -797,4 +797,12 @@ namespace dxvk {
+     Logger::info(str::format(deviceInfo.core.properties.deviceName, ":",
+-      "\n  Driver : ", deviceInfo.vk12.driverName, " ", deviceInfo.driverVersion.toString()));
++      "\n  Vendor ID            : 0x", std::hex, deviceInfo.core.properties.vendorID,
++      "\n  Device ID            : 0x", std::hex, deviceInfo.core.properties.deviceID,
++      "\n  Vulkan API           : ", std::dec,
++        VK_VERSION_MAJOR(deviceInfo.core.properties.apiVersion), ".",
++        VK_VERSION_MINOR(deviceInfo.core.properties.apiVersion), ".",
++        VK_VERSION_PATCH(deviceInfo.core.properties.apiVersion),
++      "\n  Driver               : ", deviceInfo.vk12.driverName, " ", deviceInfo.driverVersion.toString(),
++      "\n  textureCompressionBC : ", m_deviceFeatures.core.features.textureCompressionBC ? "1" : "0"));
++    // GeneralsX @feature Codex 22/07/2026 Emit Android compatibility inputs from DXVK's existing adapter.
+ 
+     for (uint32_t i = 0; i < memoryInfo.memoryHeapCount; i++) {
 diff --git a/meson.build b/meson.build
 index 8f725104..3e6bd9d5 100644
 --- a/meson.build
@@ -32,7 +50,7 @@ index 8f725104..3e6bd9d5 100644
 +  else
 +    dxvk_so_version = {'version': dxvk_abi_version + '.' + dxvk_version[0] + dxvk_version[1] + dxvk_version[2]}
 +  endif
-
+ 
    wrc           = find_program('touch')
    wrc_generator = generator(wrc, output : [ '@BASENAME@_ignored.h' ], arguments : [ '@OUTPUT@' ] )
 diff --git a/src/wsi/sdl3/wsi_platform_sdl3.cpp b/src/wsi/sdl3/wsi_platform_sdl3.cpp

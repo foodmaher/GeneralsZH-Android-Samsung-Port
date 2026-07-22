@@ -60,6 +60,10 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
+#if defined(__ANDROID__)
+#include <cstdio>
+#include <cstdlib>
+#endif
 // GeneralsX @build BenderAI 10/02/2026 - Embedded browser Windows-only (requires COM LPDISPATCH)
 #ifdef _WIN32
 #include "dx8webbrowser.h"
@@ -3396,6 +3400,24 @@ void DX8Wrapper::Compute_Caps(WW3DFormat display_format)
 	DX8_Assert();
 	delete CurrentCaps;
 	CurrentCaps=new DX8Caps(_Get_D3D8(),D3DDevice,display_format,Get_Current_Adapter_Identifier());
+#if defined(__ANDROID__)
+	// GeneralsX @feature Codex 22/07/2026 Report the DXVK-backed texture formats after the existing device capability query.
+	const D3DADAPTER_IDENTIFIER8& adapter=Get_Current_Adapter_Identifier();
+	const bool bc1=CurrentCaps->Support_Texture_Format(WW3D_FORMAT_DXT1);
+	const bool bc2=CurrentCaps->Support_Texture_Format(WW3D_FORMAT_DXT3);
+	const bool bc3=CurrentCaps->Support_Texture_Format(WW3D_FORMAT_DXT5);
+	const bool rgba8=CurrentCaps->Support_Texture_Format(WW3D_FORMAT_A8R8G8B8);
+	const char *profile=std::getenv("GX_ANDROID_TEXTURE_PROFILE");
+	if (profile==nullptr) profile="default";
+	fprintf(stderr,"[GX_ANDROID_GRAPHICS] gpu_vendor=0x%04x gpu_device=0x%04x device_name='%s'\n",
+		adapter.VendorId,adapter.DeviceId,adapter.Description);
+	fprintf(stderr,"[GX_ANDROID_GRAPHICS] d3d_texture_formats bc1=%d bc2=%d bc3=%d rgba8=%d texture_profile=%s\n",
+		bc1 ? 1 : 0,bc2 ? 1 : 0,bc3 ? 1 : 0,rgba8 ? 1 : 0,profile);
+	if ((!bc1 || !bc2 || !bc3) && strcmp(profile,"rgba8")!=0)
+	{
+		fprintf(stderr,"ERROR: [GX_ANDROID_GRAPHICS] BC texture sampling is unavailable and no RGBA8 fallback profile is installed. Prepare and push the RGBA8 texture fallback before launching.\n");
+	}
+#endif
 }
 
 
