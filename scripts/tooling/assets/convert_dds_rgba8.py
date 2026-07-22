@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Convert classic BC1/BC2/BC3 DDS trees to classic A8R8G8B8 DDS overlays.
+"""Convert classic BC1/BC2/BC3 DDS assets to A8R8G8B8 DDS overlays.
 
 The implementation intentionally uses only the Python standard library. The
 repository's C++ DDS decoder is tied to engine surface abstractions and does
 not implement BC2, so reusing it as a Linux/GitHub Actions host tool would be
 larger and less auditable than this bounded decoder.
+
+The input may be an extracted asset tree or a normal game-data directory. The
+tool recursively discovers loose DDS files and DDS entries inside BIGF
+archives; archives are read directly and are never extracted or modified.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import struct
 import sys
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 
 
@@ -48,6 +52,10 @@ MANIFEST_NAME = "texture-fallback-manifest.json"
 PROFILE_NAME = "texture-fallback.cfg"
 MANIFEST_VERSION = 1
 
+BIG_MAGIC = b"BIGF"
+BIG_HEADER_SIZE = 16
+BIG_MAX_PATH_BYTES = 4096
+
 FOURCC_FORMATS = {
     b"DXT1": ("BC1", 8),
     b"DXT3": ("BC2", 16),
@@ -61,6 +69,10 @@ class DdsError(ValueError):
 
 class UnsupportedDdsError(DdsError):
     """Well-formed DDS input outside the proof-of-concept format set."""
+
+
+class BigArchiveError(ValueError):
+    """Malformed or unsupported BIG archive."""
 
 
 @dataclass(frozen=True)
@@ -84,6 +96,38 @@ class ConversionSummary:
     skipped: int = 0
     unsupported: int = 0
     failed: int = 0
+    archives_scanned: int = 0
+    archive_dds_found: int = 0
+    loose_dds_found: int = 0
+    duplicate_dds: int = 0
+
+
+@dataclass(frozen=True)
+class DdsSource:
+    """A loose file or a bounded byte range in a BIG archive."""
+
+    relative_key: str
+    container: Path
+    offset: int = 0
+    size: int | None = None
+
+    @property
+    def origin(self) -> str:
+        if self.size is None:
+            return str(self.container)
+        return f"{self.container}:{self.offset}+{self.size}"
+
+    def read_bytes(self) -> bytes:
+        if self.size is None:
+            return self.container.read_bytes()
+        with self.container.open("rb") as stream:
+            stream.seek(self.offset)
+            data = stream.read(self.size)
+        if len(data) != self.size:
+            raise BigArchiveError(
+                f"short read for {self.relative_key!r} in {self.container}"
+            )
+        return data
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -378,11 +422,135 @@ def _is_within(candidate: Path, parent: Path) -> bool:
         return False
 
 
-def _source_files(input_root: Path) -> Iterable[Path]:
-    return sorted(
-        (path for path in input_root.rglob("*") if path.is_file() and path.suffix.lower() == ".dds"),
+def _normalise_archive_path(raw_path: bytes, archive_path: Path) -> str:
+    try:
+        decoded = raw_path.decode("cp1252")
+    except UnicodeDecodeError as error:
+        raise BigArchiveError(f"invalid filename encoding in {archive_path}") from error
+
+    decoded = decoded.replace("\\", "/")
+    path = PurePosixPath(decoded)
+    if (
+        not decoded
+        or decoded.startswith("/")
+        or path.is_absolute()
+        or any(part in ("", ".", "..") for part in path.parts)
+        or (path.parts and ":" in path.parts[0])
+    ):
+        raise BigArchiveError(
+            f"unsafe entry path {decoded!r} in {archive_path}"
+        )
+    return path.as_posix()
+
+
+def _big_dds_sources(archive_path: Path) -> Iterable[DdsSource]:
+    """Yield checked DDS entries from one Generals BIGF archive."""
+
+    archive_size = archive_path.stat().st_size
+    with archive_path.open("rb") as stream:
+        header = stream.read(BIG_HEADER_SIZE)
+        if len(header) != BIG_HEADER_SIZE:
+            raise BigArchiveError(f"archive header is truncated: {archive_path}")
+        if header[:4] != BIG_MAGIC:
+            raise BigArchiveError(f"unsupported BIG signature in {archive_path}")
+
+        file_count, directory_end = struct.unpack_from(">II", header, 8)
+        if directory_end < BIG_HEADER_SIZE or directory_end > archive_size:
+            raise BigArchiveError(
+                f"invalid BIG directory size {directory_end} in {archive_path}"
+            )
+        # Every entry needs at least offset, size, and a terminating NUL.
+        if file_count > (directory_end - BIG_HEADER_SIZE) // 9:
+            raise BigArchiveError(
+                f"invalid BIG file count {file_count} in {archive_path}"
+            )
+
+        for entry_index in range(file_count):
+            entry_header = stream.read(8)
+            if len(entry_header) != 8:
+                raise BigArchiveError(
+                    f"truncated entry {entry_index} in {archive_path}"
+                )
+            offset, size = struct.unpack(">II", entry_header)
+
+            name = bytearray()
+            while True:
+                if stream.tell() >= directory_end:
+                    raise BigArchiveError(
+                        f"unterminated entry name {entry_index} in {archive_path}"
+                    )
+                byte = stream.read(1)
+                if byte == b"\0":
+                    break
+                name.extend(byte)
+                if len(name) > BIG_MAX_PATH_BYTES:
+                    raise BigArchiveError(
+                        f"entry name {entry_index} is too long in {archive_path}"
+                    )
+
+            relative_key = _normalise_archive_path(bytes(name), archive_path)
+            if offset < directory_end or size > archive_size - offset:
+                raise BigArchiveError(
+                    f"entry {relative_key!r} is outside {archive_path}"
+                )
+            if PurePosixPath(relative_key).suffix.lower() == ".dds":
+                yield DdsSource(relative_key, archive_path, offset, size)
+
+
+def _discover_sources(
+    input_root: Path, summary: ConversionSummary
+) -> List[DdsSource]:
+    """Find effective loose and archived DDS sources recursively.
+
+    Loose files win because the engine checks its local filesystem before BIG
+    archives. For duplicate archive entries, the first archive in the engine's
+    case-insensitive path order wins.
+    """
+
+    selected: Dict[str, DdsSource] = {}
+    loose_files = sorted(
+        (
+            path
+            for path in input_root.rglob("*")
+            if path.is_file() and path.suffix.lower() == ".dds"
+        ),
         key=lambda path: path.relative_to(input_root).as_posix().casefold(),
     )
+    for path in loose_files:
+        relative_key = path.relative_to(input_root).as_posix()
+        folded = relative_key.casefold()
+        if folded in selected:
+            summary.duplicate_dds += 1
+            continue
+        selected[folded] = DdsSource(relative_key, path)
+        summary.loose_dds_found += 1
+
+    archives = sorted(
+        (
+            path
+            for path in input_root.rglob("*")
+            if path.is_file() and path.suffix.lower() == ".big"
+        ),
+        key=lambda path: path.relative_to(input_root).as_posix().casefold(),
+    )
+    for archive_path in archives:
+        summary.archives_scanned += 1
+        print(f"SCAN      {archive_path.relative_to(input_root).as_posix()}")
+        try:
+            archive_sources = list(_big_dds_sources(archive_path))
+        except (BigArchiveError, OSError, OverflowError, struct.error) as error:
+            summary.failed += 1
+            print(f"FAILED    {archive_path}: {error}", file=sys.stderr)
+            continue
+        summary.archive_dds_found += len(archive_sources)
+        for source in archive_sources:
+            folded = source.relative_key.casefold()
+            if folded in selected:
+                summary.duplicate_dds += 1
+                continue
+            selected[folded] = source
+
+    return sorted(selected.values(), key=lambda source: source.relative_key.casefold())
 
 
 def convert_tree(input_root: Path, output_root: Path) -> ConversionSummary:
@@ -401,12 +569,12 @@ def convert_tree(input_root: Path, output_root: Path) -> ConversionSummary:
     manifest_entries: List[Dict[str, object]] = []
     summary = ConversionSummary()
 
-    for source_path in _source_files(input_root):
-        relative = source_path.relative_to(input_root)
-        relative_key = relative.as_posix()
-        output_path = profile_root / relative
+    for source in _discover_sources(input_root, summary):
+        relative_key = source.relative_key
+        relative = PurePosixPath(relative_key)
+        output_path = profile_root.joinpath(*relative.parts)
         try:
-            source_data = source_path.read_bytes()
+            source_data = source.read_bytes()
             source_hash = _sha256_bytes(source_data)
             previous_entry = previous.get(relative_key)
 
@@ -449,7 +617,10 @@ def convert_tree(input_root: Path, output_root: Path) -> ConversionSummary:
             }
         )
         summary.converted += 1
-        print(f"CONVERT   {relative_key} ({image.format_name} -> A8R8G8B8)")
+        print(
+            f"CONVERT   {relative_key} ({image.format_name} -> A8R8G8B8; "
+            f"source={source.origin})"
+        )
 
     manifest_entries.sort(key=lambda entry: str(entry["source"]).casefold())
     manifest = {
@@ -467,9 +638,17 @@ def convert_tree(input_root: Path, output_root: Path) -> ConversionSummary:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Convert BC1/BC2/BC3 DDS files to an incremental RGBA8 Android overlay."
+        description=(
+            "Recursively convert loose and BIG-archived BC1/BC2/BC3 DDS files "
+            "to an incremental RGBA8 Android overlay."
+        )
     )
-    parser.add_argument("--input", required=True, type=Path, help="source DDS directory")
+    parser.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        help="game-data directory containing loose DDS and/or BIG files",
+    )
     parser.add_argument("--output", required=True, type=Path, help="generated overlay root")
     return parser
 
@@ -485,7 +664,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         "SUMMARY "
         f"converted={summary.converted} skipped={summary.skipped} "
-        f"unsupported={summary.unsupported} failed={summary.failed}"
+        f"unsupported={summary.unsupported} failed={summary.failed} "
+        f"archives_scanned={summary.archives_scanned} "
+        f"archive_dds_found={summary.archive_dds_found} "
+        f"loose_dds_found={summary.loose_dds_found} "
+        f"duplicates={summary.duplicate_dds}"
     )
     return 1 if summary.failed else 0
 

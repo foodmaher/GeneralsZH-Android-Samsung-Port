@@ -22,10 +22,12 @@ possible future optimisations after RGBA8 is proven on real devices.
 - A build containing the RGBA8 fallback changes.
 - Python 3.10 or newer on Linux, macOS, or Termux.
 - `adb` from Android platform-tools when pushing from a host.
-- DDS files extracted from game data you legally own.
+- Game data, including `.big` archives, that you legally own.
 
-The proof-of-concept converter reads a directory tree. It does not extract or
-repack `.big` archives. Do not commit extracted or converted commercial assets.
+The proof-of-concept converter recursively searches the supplied directory for
+loose DDS files and `BIGF` `.big` archives. It reads DDS entries directly from
+the archives without extracting, modifying, or repacking them. Do not commit
+converted commercial assets.
 
 The converter uses only the Python standard library. The engine already has a
 BC decoder, but it is coupled to W3D texture/surface classes and is not a
@@ -55,7 +57,7 @@ Run from the repository root. Paths may contain spaces.
 
 ```bash
 GX_ANDROID_TEXTURE_FALLBACK=rgba8 \
-GX_ANDROID_TEXTURE_INPUT="/path/to/legally extracted GameData" \
+GX_ANDROID_TEXTURE_INPUT="/path/to/your legal GeneralsZH game folder" \
 GX_ANDROID_TEXTURE_OUTPUT="/path/to/generated Android overlay" \
 ./scripts/build/android/push-assets-android.sh --prepare-only
 ```
@@ -74,6 +76,8 @@ generated Android overlay/
 
 The converter:
 
+- recursively finds `.big` files and loose DDS files in all subdirectories;
+- reads DDS entries inside classic `BIGF` archives without changing them;
 - supports DXT1, DXT3, and DXT5;
 - preserves relative paths, filenames, dimensions, alpha, and every source mip;
 - handles non-square and sub-4×4 textures;
@@ -91,7 +95,7 @@ Pass that exact device path:
 
 ```bash
 GX_ANDROID_TEXTURE_FALLBACK=rgba8 \
-GX_ANDROID_TEXTURE_INPUT="/path/to/legally extracted GameData" \
+GX_ANDROID_TEXTURE_INPUT="/path/to/your legal GeneralsZH game folder" \
 GX_ANDROID_TEXTURE_OUTPUT="/path/to/generated Android overlay" \
 GX_ANDROID_GAME_DATA="/sdcard/Download/GeneralsZH" \
 ./scripts/build/android/push-assets-android.sh
@@ -180,7 +184,8 @@ fallback disabled on Adreno unless testing it deliberately.
 ## Current limitations
 
 - Vulkan 1.3 and the other DXVK-required features are still required.
-- The converter does not read `.big` archives directly.
+- Only the `BIGF` archive format used by the game is accepted; malformed or
+  different archive variants are reported as failures.
 - Only classic 2D DXT1, DXT3, and DXT5 DDS inputs are accepted.
 - DX10 DDS, texture arrays, cubemaps, volumes, DXT2, and DXT4 are rejected.
 - RGBA8 can be too large for a full production asset set on memory-constrained devices.

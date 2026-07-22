@@ -67,6 +67,30 @@ def _rgba_pixels(output: bytes) -> list[tuple[int, int, int, int]]:
     return pixels
 
 
+def _big_archive(entries: list[tuple[str, bytes]]) -> bytes:
+    encoded_entries = [(name.encode("cp1252"), data) for name, data in entries]
+    directory_size = converter.BIG_HEADER_SIZE + sum(
+        8 + len(name) + 1 for name, _data in encoded_entries
+    )
+    data_offset = directory_size
+    directory = bytearray()
+    payload = bytearray()
+    for name, data in encoded_entries:
+        directory.extend(struct.pack(">II", data_offset, len(data)))
+        directory.extend(name)
+        directory.append(0)
+        payload.extend(data)
+        data_offset += len(data)
+    archive_size = converter.BIG_HEADER_SIZE + len(directory) + len(payload)
+    return (
+        converter.BIG_MAGIC
+        + struct.pack("<I", archive_size)
+        + struct.pack(">II", len(entries), directory_size)
+        + directory
+        + payload
+    )
+
+
 class ConvertDdsRgba8Tests(unittest.TestCase):
     def test_bc1_block_palette(self) -> None:
         indices = [0, 1, 2, 3] * 4
@@ -232,6 +256,107 @@ class ConvertDdsRgba8Tests(unittest.TestCase):
             third = converter.convert_tree(input_root, output_root)
             self.assertEqual(third.converted, 1)
             self.assertNotEqual(generated.read_bytes(), b"tampered")
+
+    def test_tree_finds_dds_inside_nested_big_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            input_root = temporary / "Normal Game Folder"
+            output_root = temporary / "Generated"
+            archive_path = input_root / "Data" / "TexturesZH.big"
+            archive_path.parent.mkdir(parents=True)
+            source = _compressed_dds(
+                4,
+                4,
+                b"DXT1",
+                [_colour_block(0xF800, 0x07E0, [0] * 16)],
+            )
+            archive_path.write_bytes(
+                _big_archive(
+                    [
+                        ("Art\\Textures\\Synthetic.DDS", source),
+                        ("Data\\INI\\Object.ini", b"not a texture"),
+                    ]
+                )
+            )
+
+            summary = converter.convert_tree(input_root, output_root)
+            generated = (
+                output_root
+                / converter.PROFILE_RELATIVE_ROOT
+                / "Art"
+                / "Textures"
+                / "Synthetic.DDS"
+            )
+
+            self.assertEqual(summary.archives_scanned, 1)
+            self.assertEqual(summary.archive_dds_found, 1)
+            self.assertEqual(summary.converted, 1)
+            self.assertTrue(generated.is_file())
+            self.assertEqual(_rgba_pixels(generated.read_bytes())[0], (255, 0, 0, 255))
+
+    def test_loose_dds_overrides_same_path_inside_big(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            input_root = temporary / "Game"
+            output_root = temporary / "Generated"
+            relative = Path("Art") / "Textures" / "Priority.dds"
+            loose = input_root / relative
+            loose.parent.mkdir(parents=True)
+            loose.write_bytes(
+                _compressed_dds(
+                    4, 4, b"DXT1", [_colour_block(0xF800, 0x07E0, [0] * 16)]
+                )
+            )
+            (input_root / "Textures.big").write_bytes(
+                _big_archive(
+                    [
+                        (
+                            "Art\\Textures\\Priority.dds",
+                            _compressed_dds(
+                                4,
+                                4,
+                                b"DXT1",
+                                [_colour_block(0x07E0, 0x001F, [0] * 16)],
+                            ),
+                        )
+                    ]
+                )
+            )
+
+            summary = converter.convert_tree(input_root, output_root)
+            generated = output_root / converter.PROFILE_RELATIVE_ROOT / relative
+
+            self.assertEqual(summary.converted, 1)
+            self.assertEqual(summary.duplicate_dds, 1)
+            self.assertEqual(_rgba_pixels(generated.read_bytes())[0], (255, 0, 0, 255))
+
+    def test_big_archive_rejects_unsafe_entry_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            input_root = temporary / "Game"
+            output_root = temporary / "Generated"
+            input_root.mkdir()
+            (input_root / "Unsafe.big").write_bytes(
+                _big_archive(
+                    [
+                        (
+                            "..\\Outside.dds",
+                            _compressed_dds(
+                                4,
+                                4,
+                                b"DXT1",
+                                [_colour_block(0xF800, 0x07E0, [0] * 16)],
+                            ),
+                        )
+                    ]
+                )
+            )
+
+            summary = converter.convert_tree(input_root, output_root)
+
+            self.assertEqual(summary.failed, 1)
+            self.assertEqual(summary.converted, 0)
+            self.assertFalse((temporary / "Outside.dds").exists())
 
 
 if __name__ == "__main__":

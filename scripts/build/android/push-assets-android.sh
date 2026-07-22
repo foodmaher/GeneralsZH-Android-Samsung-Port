@@ -3,7 +3,7 @@
 #
 # Usage:
 #   GX_ANDROID_TEXTURE_FALLBACK=rgba8 \
-#   GX_ANDROID_TEXTURE_INPUT="/path/to/extracted GameData" \
+#   GX_ANDROID_TEXTURE_INPUT="/path/to/game folder containing BIG files" \
 #   GX_ANDROID_TEXTURE_OUTPUT="/path/to/generated overlay" \
 #   GX_ANDROID_GAME_DATA="/sdcard/Download/GeneralsZH" \
 #   ./scripts/build/android/push-assets-android.sh
@@ -29,7 +29,7 @@ Usage: push-assets-android.sh --texture-fallback rgba8 --input PATH [options]
 
 Options:
   --texture-fallback PROFILE  Required; only "rgba8" is currently supported
-  --input PATH                Directory containing legally extracted DDS files
+  --input PATH                Game directory containing BIG files and/or loose DDS files
   --output PATH               Generated overlay root
   --device-game-root PATH     Selected game folder on the Android device
   --serial SERIAL             adb device serial

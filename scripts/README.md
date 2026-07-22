@@ -50,7 +50,7 @@ Reserved for modern Windows toolchain (VS2022 + SDL3 + DXVK + OpenAL)
 ### `tooling/` - Code Analysis & Utilities
 
 #### `tooling/assets/` - Asset Preparation
-- `convert_dds_rgba8.py` - Convert BC1/BC2/BC3 DDS trees to classic A8R8G8B8 DDS overlays
+- `convert_dds_rgba8.py` - Recursively convert loose or BIG-archived BC1/BC2/BC3 DDS assets to classic A8R8G8B8 DDS overlays
 
 #### `tooling/clang-tidy/` - Custom clang-tidy Plugin
 - `plugin/` - Custom clang-tidy checks source (C++ checks for AsciiString, Singleton patterns)
@@ -67,7 +67,7 @@ Utilities for large-scale code refactoring and fixes:
 ### `qa/` - Quality Assurance & Testing
 
 #### `qa/dds/` - Synthetic DDS Tests
-- `test_convert_dds_rgba8.py` - Validate BC decoding, mip preservation, malformed input, paths, and incrementality
+- `test_convert_dds_rgba8.py` - Validate BC decoding, BIG discovery, mip preservation, malformed input, paths, precedence, and incrementality
 
 #### `qa/smoke/` - Smoke Tests
 - `docker-smoke-test-zh.sh` - Quick startup validation (expects crash, checks init output)
